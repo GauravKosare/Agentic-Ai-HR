@@ -1,22 +1,22 @@
 # Backend Schema Document
 ## AI Recruiter Agent — Conversational Agentic Hiring Assistant
 
-**Version:** 2.0 (Revised per updated workflow)
-**Date:** July 15, 2026
-**Database:** PostgreSQL (with `pgvector` extension)
+**Version:** 2.2 (Revised for zero-cost stack: Email-only channel, self-hosted meeting bot, LLM-quota audit events)
+**Date:** July 19, 2026
+**Database:** **Supabase** — managed PostgreSQL (with `pgvector` extension), plus Supabase Auth, Storage, and Realtime on top of the same Postgres instance
 
 ---
 
 ## 1. Entity Relationship Overview
 
 ```
-owners ──< requisitions ──< forms ──< platform_postings
+auth.users (Supabase Auth) ──1:1── owners ──< requisitions ──< forms ──< platform_postings
                 │
                 └──< candidates ──< applications
                                       │
                                       ├──< resumes ──< resume_scores
                                       ├──< consents
-                                      ├──< notifications (email/whatsapp)
+                                      ├──< notifications (email)
                                       ├──< interview_invites
                                       ├──< meetings ──< interview_sessions ──< transcripts
                                       ├──< scorecards
@@ -29,13 +29,15 @@ owners ──< requisitions ──< forms ──< platform_postings
 ## 2. Table Definitions
 
 ### 2.1 `owners` (the single recruiter/account holder)
+All application tables live in the `public` schema, as is standard for Supabase. `owners` is 1:1 with a Supabase-managed `auth.users` row — Supabase Auth handles credentials/sessions; this table holds the application-specific profile.
 ```sql
 CREATE TABLE owners (
     owner_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    auth_user_id     UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
     full_name        VARCHAR(255) NOT NULL,
     email            VARCHAR(255) UNIQUE NOT NULL,
     phone            VARCHAR(30),
-    connected_platforms JSONB,         -- {"linkedin":"manual","naukri":"manual","internshala":"manual","zoom":"api","whatsapp":"api"}
+    connected_platforms JSONB,         -- {"linkedin":"manual","naukri":"manual","internshala":"manual","zoom":"api","email":"brevo"}
     default_response_threshold INT DEFAULT 5,
     default_languages  JSONB DEFAULT '["en","hi","mr"]',
     created_at       TIMESTAMPTZ DEFAULT now(),
@@ -129,7 +131,7 @@ CREATE INDEX idx_applications_stage ON applications(current_stage);
 CREATE TABLE consents (
     consent_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     candidate_id     UUID REFERENCES candidates(candidate_id),
-    consent_type     VARCHAR(50) NOT NULL,   -- 'data_processing','ai_screening','whatsapp_messages','ai_interview_recording'
+    consent_type     VARCHAR(50) NOT NULL,   -- 'data_processing','ai_screening','email_communications','ai_interview_recording'
     granted          BOOLEAN NOT NULL,
     granted_at       TIMESTAMPTZ,
     revoked_at       TIMESTAMPTZ,
@@ -142,7 +144,7 @@ CREATE TABLE consents (
 CREATE TABLE resumes (
     resume_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     application_id   UUID REFERENCES applications(application_id),
-    file_url         TEXT NOT NULL,
+    file_url         TEXT NOT NULL,   -- Supabase Storage object path in the private `resumes` bucket, e.g. "resumes/{application_id}/{filename}"; accessed via signed URL, never public
     raw_text         TEXT,
     embedding        VECTOR(1536),
     parsed_fields    JSONB,
@@ -159,13 +161,13 @@ CREATE TABLE resume_scores (
 );
 ```
 
-### 2.9 `notifications` (Email + WhatsApp)
+### 2.9 `notifications` (Email — sole candidate messaging channel)
 ```sql
 CREATE TABLE notifications (
     notification_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     candidate_id     UUID REFERENCES candidates(candidate_id),
     application_id   UUID REFERENCES applications(application_id),
-    channel          VARCHAR(20) CHECK (channel IN ('email','whatsapp')),
+    channel          VARCHAR(20) CHECK (channel IN ('email')),  -- WhatsApp deliberately excluded, see 07-Financial-Subscription-Tracking.md
     template_name    VARCHAR(100),
     language         VARCHAR(10) CHECK (language IN ('en','hi','mr')),
     content_snapshot TEXT,
@@ -208,14 +210,14 @@ CREATE TABLE meetings (
 CREATE TABLE interview_sessions (
     session_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     meeting_id       UUID REFERENCES meetings(meeting_id),
-    bot_provider     VARCHAR(50),            -- 'recall_ai','meetstream_ai'
+    bot_provider     VARCHAR(50),            -- 'vexa' (self-hosted, open source)
     disclosure_confirmed BOOLEAN DEFAULT false,  -- AI-interviewer + recording disclosure given
     primary_language  VARCHAR(10) CHECK (primary_language IN ('en','hi','mr')),
     started_at       TIMESTAMPTZ,
     completed_at     TIMESTAMPTZ,
     status           VARCHAR(30) DEFAULT 'scheduled' CHECK (status IN (
                         'scheduled','in_progress','completed','failed','rescheduled')),
-    recording_url    TEXT
+    recording_url    TEXT   -- Supabase Storage object path in the private `recordings` bucket; accessed via signed URL, never public
 );
 ```
 
@@ -266,7 +268,7 @@ CREATE TABLE audit_log (
     log_id           BIGSERIAL PRIMARY KEY,
     entity_type      VARCHAR(50) NOT NULL,
     entity_id        UUID NOT NULL,
-    action           VARCHAR(100) NOT NULL,  -- 'form_generated','posted','message_sent','meeting_created','interview_completed','decision_made'
+    action           VARCHAR(100) NOT NULL,  -- 'form_generated','posted','message_sent','meeting_created','interview_completed','decision_made','ai_quota_paused','ai_quota_resumed'
     actor_type       VARCHAR(20) CHECK (actor_type IN ('system','owner')),
     actor_id         UUID,
     details          JSONB,
@@ -276,12 +278,14 @@ CREATE TABLE audit_log (
 );
 CREATE INDEX idx_audit_entity ON audit_log(entity_type, entity_id);
 ```
+`ai_quota_paused` / `ai_quota_resumed` rows (entity_type `'system'`) record the LLM Router (TRD §3.1a) exhausting both the Gemini and Groq free tiers and later resuming; `details` carries the requests/tokens used and the quota-reset timestamp. Querying frequency of these events over time is the intended signal for deciding whether the zero-cost policy still fits actual usage — see [07-Financial-Subscription-Tracking.md](./07-Financial-Subscription-Tracking.md).
 
 ---
 
 ## 3. Key Design Notes
 
 - **Single-Owner scoping:** all requisitions and decisions trace back to one `owners` row per account — simpler than the multi-recruiter enterprise schema from the original design; a `team_id` layer can be added later for Phase 2 multi-recruiter support without breaking this structure.
+- **`owners.auth_user_id`** links the application profile to Supabase Auth's `auth.users`, and is the join key every RLS policy uses to scope data to the logged-in Owner (see §5.1).
 - **`posting_mode` field on `platform_postings`** explicitly distinguishes API-automated posting from Owner-manual posting — this keeps the ToS-risk boundary visible in the data model itself, not just in process documentation.
 - **`consents` table includes `ai_interview_recording`** as its own consent type, separate from general data processing — reflecting the extra disclosure needed specifically for the live AI-conducted interview.
 - **`interview_sessions.disclosure_confirmed`** is a hard gate: the interview logic should not proceed past the opening disclosure step until this flag is set true, enforced at the application layer.
@@ -297,3 +301,35 @@ CREATE INDEX idx_notifications_candidate ON notifications(candidate_id);
 CREATE INDEX idx_transcripts_session ON transcripts(session_id);
 CREATE INDEX idx_resumes_embedding ON resumes USING ivfflat (embedding vector_cosine_ops);
 ```
+
+## 5. Supabase-Specific Configuration
+
+### 5.1 Row Level Security (RLS)
+RLS is enabled on every table that traces back to an `owner_id` (directly or via `requisition_id`/`application_id`), so an authenticated Owner can only ever see their own data — this is the enforcement mechanism behind the PRD's single-Owner data isolation requirement. Pattern (repeated per table, joining up to `owners.auth_user_id`):
+```sql
+ALTER TABLE requisitions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Owners can access their own requisitions"
+ON requisitions
+FOR ALL
+USING (
+    owner_id IN (SELECT owner_id FROM owners WHERE auth_user_id = auth.uid())
+);
+```
+Tables reached only through a join (e.g., `applications`, `resumes`, `transcripts`) get an equivalent policy expressed as an `EXISTS` subquery up the chain to `owners`.
+
+The **FastAPI backend** connects using the Supabase **service-role key**, which bypasses RLS — this is intentional and necessary, since the orchestrator agent writes records (form generation, scoring, etc.) on behalf of the system rather than as a logged-in Owner. The **frontend** never holds the service-role key; it uses the **anon key** plus the Owner's session JWT, so RLS is the actual security boundary for any direct client-side reads.
+
+### 5.2 Storage Buckets
+| Bucket | Contents | Access |
+|---|---|---|
+| `resumes` | Candidate resume files | Private; signed URL only, generated server-side |
+| `recordings` | Interview audio/video recordings | Private; signed URL only, generated server-side |
+
+Both buckets are private by default (no public bucket policy). Signed URLs are short-lived and generated on demand when the Owner Console needs to display a resume or play back a recording.
+
+### 5.3 Realtime
+Realtime is enabled (via `supabase_realtime` publication) on `applications` (drives the live response-counter and pipeline-status views) and optionally `interview_sessions` (drives an in-progress/completed status indicator on the Owner Console). Every other table is read via normal request/response — Realtime is used only where the UI genuinely needs to update without user action.
+
+### 5.4 Migrations
+Schema changes are managed as versioned SQL migrations via the Supabase CLI (`supabase migration new`, `supabase db push`), keeping the schema in this document and the actual database in sync and reviewable through normal PR review rather than applied ad hoc through the Supabase dashboard.

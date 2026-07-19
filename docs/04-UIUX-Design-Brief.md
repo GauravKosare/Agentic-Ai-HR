@@ -1,16 +1,16 @@
 # UI/UX Design Brief
 ## AI Recruiter Agent — Conversational Agentic Hiring Assistant
 
-**Version:** 2.0 (Revised per updated workflow)
-**Date:** July 15, 2026
+**Version:** 3.0 (Revised for zero-cost stack: Email-only messaging, AI-paused state)
+**Date:** July 19, 2026
 
 ---
 
 ## 1. Design Objective
 
-Two experiences:
-1. **Owner Console** — a conversational, low-friction control surface where a single recruiter states requirements, approves forms, and reviews scorecards. Should feel like directing an assistant, not operating enterprise software.
-2. **Candidate Experience** — application form, interview invitation, and the live AI interview itself. Must feel transparent, respectful, and calm, especially since the interviewer is AI.
+Delivered as a **single responsive web application** (React) with two experiences as distinct route groups within it — not two separate products:
+1. **Owner Console** — a conversational, low-friction control surface where a single recruiter states requirements, approves forms, and reviews scorecards. Should feel like directing an assistant, not operating enterprise software. Login/session via Supabase Auth.
+2. **Candidate Experience** — application form, interview invitation, and the live AI interview itself, reached via unauthenticated links (no candidate account/login required). Must feel transparent, respectful, and calm, especially since the interviewer is AI.
 
 ## 2. Target Users & Contexts
 
@@ -45,6 +45,10 @@ Two experiences:
 - Per-platform status: "Posted automatically" (API-connected platforms) vs. "Ready to post — click to copy and post on [Platform]" (manual-confirm platforms), with the exact listing text ready to paste.
 - Response counter per requisition, live-updating, with a visible progress toward the 5-response threshold.
 
+### 4.3a AI Status Indicator (system-wide)
+- A persistent, small status chip in the Owner Console header: "AI active" (default) or "AI paused — free quota reached, resuming at [time]" when the LLM Router (TRD §3.1a) has exhausted both Gemini's and Groq's free tiers for the day.
+- While paused, any screen that would trigger an AI action (approve form, send invite, view scorecard-in-progress) shows an inline note rather than failing silently — e.g., "This will process automatically once the AI resumes at [time]." Non-AI actions (viewing data, manual posting, confirming a decision on an already-generated scorecard) remain fully usable.
+
 ### 4.4 Pipeline / Candidate List
 - Simple list/table per requisition: candidate name, source platform, response date, status (applied → invited → interviewed → reviewed → decided).
 - Filter by status, source, language preference.
@@ -56,9 +60,10 @@ Two experiences:
 
 ### 4.6 Settings
 - Response threshold configuration (default 5).
-- Connected accounts (platforms, Email, WhatsApp Business, Zoom/Google Meet).
-- Default interview time-limit and etiquette-note template (editable).
+- Connected accounts (platforms, Email, Zoom/Google Meet).
+- Default interview time-limit and etiquette-note template (editable; capped guidance at 40 minutes to stay within the free Zoom tier).
 - Supported languages toggle (English/Hindi/Marathi on by default).
+- Today's AI usage: simple view of Gemini/Groq free-tier requests used vs. daily limit, so the Owner can see how close the system is to pausing before it happens.
 
 ## 5. Candidate-Facing Screens
 
@@ -67,13 +72,13 @@ Two experiences:
 - Language selector at the top (English / हिंदी / मराठी).
 - Brief, plain-language notice: "Your application may be reviewed by AI, and if shortlisted, your first interview will be conducted by an AI interviewer over video call. A recruiter reviews every decision."
 
-### 5.2 Interview Invitation (Email/WhatsApp)
+### 5.2 Interview Invitation (Email)
 - Clear structure: date, time, format (video call), expected duration, and a short etiquette note (quiet space, camera on, ID handy, join 5 minutes early).
 - One-tap "Confirm this slot" / "Request another time" action.
 - Delivered in the candidate's selected language.
 
 ### 5.3 Pre-Interview Reminder
-- Sent shortly before the scheduled time via Email + WhatsApp with the join link.
+- Sent shortly before the scheduled time via Email with the join link.
 - Short reassurance line: "This will be a friendly conversation about your background and the role — no trick questions."
 
 ### 5.4 Live AI Interview Interface (within Zoom/Meet)

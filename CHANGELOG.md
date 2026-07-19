@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] — 2026-07-19 — Voice Pipeline Hosting: Oracle Cloud Always Free VM
+
+### Changed
+- Hosting for the Vexa + Whisper + AI4Bharat voice/meeting-bot pipeline moved from "Cloud Run free tier" to an **Oracle Cloud Always Free ARM VM** (currently 2 OCPU/12GB RAM, permanent — not a trial). This is a long-running, stateful process for the duration of each interview, which doesn't fit a serverless request/response platform architecturally, independent of cost. Cloud Run/Render remain correct for the stateless backend API paths (requirement parsing, form, distribution, notifications, scoring).
+- Documented that GPU is never free on any mainstream cloud, so the speech pipeline runs CPU-only via a quantized Whisper "small" model (faster-whisper, int8), with realistic latency of ~0.5–2s rather than the ~1s ideal target.
+- Flagged that Oracle silently cut its Always Free VM allocation in June 2026 (4 OCPU/24GB → 2 OCPU/12GB) with no announcement — noted as a live example of the free-tier-terms-drift risk already tracked in the Financial doc.
+- Updated TRD, Implementation Plan, Financial & Subscription Tracking, Workflow, PRD, and README accordingly.
+
+## [0.3.0] — 2026-07-19 — Zero-Cost Stack: Gemini/Groq LLM Router, Self-Hosted Speech & Meeting Bot, Email-Only
+
+### Changed
+- **LLM:** Claude Sonnet 5 replaced with a Gemini API (free tier, primary) → Groq API (free tier, fallback) router. On exhaustion of both free tiers, the system pauses all AI-dependent actions, sends the Owner one reminder notification, and resumes automatically at the next quota reset rather than ever calling a paid model.
+- **Speech (STT/TTS):** Sarvam AI replaced with self-hosted open-source Whisper (STT) and AI4Bharat Indic Parler-TTS/IndicF5 (TTS). Accepted trade-off: weaker Hindi/Marathi code-switching accuracy than the purpose-built commercial option; requires dedicated validation in Phase 5.
+- **Meeting bot:** Recall.ai/MeetStream.ai replaced with self-hosted Vexa (open source, Apache 2.0) — no per-minute vendor fee.
+- **Candidate messaging:** WhatsApp Business Cloud API removed entirely; Email (via Brevo) is now the sole candidate channel. Meta bills business-initiated template messages with no zero-cost path, so it didn't fit the project's free-tier-only policy.
+- **Resume parsing:** now routed through the same Gemini/Groq LLM Router instead of Claude.
+- Updated PRD, TRD, Workflow, UI/UX Brief, Implementation Plan, Backend Schema, README, and the Financial & Subscription Tracking document accordingly.
+
+### Rationale
+- Project policy shifted to zero recurring cost for the development/pilot stage. Every tool without a genuine free/self-hosted path was either replaced or, where no drop-in replacement existed at comparable quality (the LLM), designed to degrade gracefully instead of incurring cost.
+
+## [0.2.0] — 2026-07-19 — Supabase Migration & Web Application Architecture
+
+### Changed
+- Data store, authentication, file storage, and realtime updates consolidated onto **Supabase** (Postgres + pgvector, Auth, Storage, Realtime), replacing the original generic PostgreSQL design.
+- Explicit "web application" framing applied throughout: single React SPA serving both the Owner Console and candidate-facing pages, Supabase Auth for Owner login, Row Level Security for single-Owner data isolation.
+- Added [07-Financial-Subscription-Tracking.md](./docs/07-Financial-Subscription-Tracking.md) — a living inventory of every tool/service used, free-tier terms, and cost status.
+- Replaced Affinda (resume parsing, no permanent free tier) with an LLM-based extraction approach, and SendGrid (free plan discontinued in 2025) with Brevo.
+
 ## [0.1.0] — 2026-07-15 — Initial Commit
 
 ### Added

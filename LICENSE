@@ -79,14 +79,15 @@ USE OF THE SOFTWARE.
 
 6. THIRD-PARTY SERVICES AND COMPONENTS
 
-This project's design references third-party services and APIs (including
-but not limited to Anthropic's Claude API, Sarvam AI, Meta's WhatsApp
-Business Platform, Zoom, Google Meet, and various meeting-bot and resume-
-parsing providers). Use of any such third-party service is subject to that
-provider's own terms of service and licensing, which are separate from and
-not covered by this license. The Owner makes no representation regarding
-the licensing terms of any third-party service referenced in this
-repository's documentation.
+This project's design references third-party services, APIs, and open-source
+software (including but not limited to Google's Gemini API, Groq API,
+Supabase, Zoom, Google Meet, Brevo, and open-source projects such as Vexa,
+Whisper, and AI4Bharat's speech models). Use of any such third-party service
+is subject to that provider's own terms of service and licensing, and any
+open-source component is subject to its own license, both of which are
+separate from and not covered by this license. The Owner makes no
+representation regarding the licensing terms of any third-party service or
+open-source component referenced in this repository's documentation.
 
 7. ENFORCEMENT
 
