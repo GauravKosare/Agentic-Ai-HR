@@ -1,0 +1,110 @@
+PROPRIETARY SOFTWARE LICENSE
+
+Copyright (c) 2026 [YOUR NAME OR COMPANY NAME HERE]
+All Rights Reserved.
+
+Project: AI Recruiter Agent
+Effective Date: July 15, 2026
+
+---
+
+1. OWNERSHIP
+
+This repository, including all source code, documentation, designs, schemas,
+diagrams, specifications, and other materials contained within it
+(collectively, the "Software"), is the exclusive property of
+Gaurav Kosare (the "Owner"). The Software is protected by
+copyright law and international treaty provisions. Unauthorized use is
+strictly prohibited.
+
+2. RESTRICTED RIGHTS
+
+No license, right, or interest in the Software is granted to any person or
+entity except as explicitly authorized in writing by the Owner. Specifically,
+and without limitation, no person may, without prior written permission from
+the Owner:
+
+  a. Copy, reproduce, or duplicate the Software or any portion of it, in
+     whole or in part, in any form or by any means;
+
+  b. Distribute, publish, sublicense, sell, rent, lease, or otherwise make
+     the Software available to any third party;
+
+  c. Modify, adapt, translate, reverse engineer, decompile, or disassemble
+     the Software, or attempt to derive the source code, architecture, or
+     underlying ideas of the Software;
+
+  d. Use the Software, in whole or in part, to develop, train, or improve
+     any competing product or service;
+
+  e. Remove, obscure, or alter any copyright, trademark, or other
+     proprietary notices contained within the Software;
+
+  f. Use the Software for any commercial or non-commercial purpose not
+     expressly authorized in writing by the Owner.
+
+3. CONFIDENTIALITY
+
+The Software contains confidential and proprietary information belonging to
+the Owner, including but not limited to business logic, system architecture,
+product strategy, technical designs, and workflow specifications. Any person
+granted access to this repository agrees to:
+
+  a. Hold all such information in strict confidence;
+  b. Use the information solely for the purpose expressly authorized by the
+     Owner in writing;
+  c. Not disclose the information to any third party without the Owner's
+     prior written consent;
+  d. Return or destroy all copies of the Software upon request by the Owner
+     or upon termination of any authorized access.
+
+4. AUTHORIZED COLLABORATORS
+
+Individuals or entities granted access to this repository by the Owner
+(e.g., contractors, employees, or partners working on this project) are
+granted a limited, non-transferable, non-exclusive, revocable right to
+view, use, and contribute to the Software solely for the purpose of
+performing work directly authorized by the Owner. This right terminates
+immediately upon the conclusion of the authorized engagement, at the
+Owner's discretion, or upon written revocation by the Owner, whichever
+occurs first. No other rights are granted under this Section.
+
+5. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+OWNER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE
+USE OF THE SOFTWARE.
+
+6. THIRD-PARTY SERVICES AND COMPONENTS
+
+This project's design references third-party services and APIs (including
+but not limited to Anthropic's Claude API, Sarvam AI, Meta's WhatsApp
+Business Platform, Zoom, Google Meet, and various meeting-bot and resume-
+parsing providers). Use of any such third-party service is subject to that
+provider's own terms of service and licensing, which are separate from and
+not covered by this license. The Owner makes no representation regarding
+the licensing terms of any third-party service referenced in this
+repository's documentation.
+
+7. ENFORCEMENT
+
+Any use of the Software in violation of this license will be considered a
+material breach and may result in legal action, including but not limited
+to injunctive relief and claims for damages, to the fullest extent
+permitted by applicable law.
+
+8. GOVERNING LAW
+
+This license shall be governed by and construed in accordance with the laws
+of the Republic of India, without regard to its conflict of law provisions.
+Any disputes arising under this license shall be subject to the exclusive
+jurisdiction of the courts located in Nagpur,Maharashtra.
+
+9. CONTACT
+
+For licensing inquiries, permissions, or authorized use requests, contact:
+[gauravkosare26@gmail.com]
+
+
