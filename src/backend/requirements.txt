@@ -1,0 +1,16 @@
+# Foundation connectors (Supabase + LLM Router). More get added as later phases
+# (email, meeting orchestration, voice pipeline) are scaffolded — see
+# docs/05-Implementation-Plan.md for the phase order.
+
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic>=2.9
+pydantic-settings>=2.6
+python-dotenv>=1.0
+
+supabase>=2.9
+
+google-genai>=0.3
+groq>=0.13
+
+pytest>=8.3

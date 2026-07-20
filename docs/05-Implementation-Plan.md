@@ -14,7 +14,7 @@
 - Scaffold the FastAPI backend and connect it to Supabase via the service-role key.
 - Set up the **LLM Router** (TRD §3.1a): Gemini API key (free tier, billing left disabled) + Groq API key (free tier), with fallback and quota-pause logic wired in from day one — every later phase depends on this, not on any paid model.
 - Connect core external services: Brevo (email, permanent free tier), Zoom API, Google Meet API — no WhatsApp/BSP setup (removed from scope, see [07-Financial-Subscription-Tracking.md](./07-Financial-Subscription-Tracking.md)).
-- Provision the **Oracle Cloud Always Free ARM VM** (currently 2 OCPU/12GB RAM) that will host the Vexa + Whisper + AI4Bharat pipeline in Phase 5 — set it up early so the team has a stable target environment, even though nothing runs on it until Phase 5. Confirm the current free allocation at signup (Oracle changed these terms without notice in June 2026) and document it in [07-Financial-Subscription-Tracking.md](./07-Financial-Subscription-Tracking.md).
+- Provision the **Oracle Cloud Always Free ARM VM** (currently 2 OCPU/12GB RAM) that will host the Vexa + AI4Bharat pipeline in Phase 5 — set it up early so the team has a stable target environment, even though nothing runs on it until Phase 5. Confirm the current free allocation at signup (Oracle changed these terms without notice in June 2026) and document it in [07-Financial-Subscription-Tracking.md](./07-Financial-Subscription-Tracking.md). STT does not need this VM — it's a Groq API call (see below).
 - Legal/compliance review of consent flows (DPDP-aligned notice/consent, email opt-in).
 
 **Deliverables:** Owner can sign up/log in via the web app (Supabase Auth); RLS confirmed to isolate one Owner's data from another's; a test call succeeds through the LLM Router (Gemini path); a forced-quota test confirms the Groq fallback and pause-with-notification behavior both work; email test message sends successfully via Brevo; Zoom instant meeting can be created via API test call.
@@ -47,10 +47,10 @@
 **Deliverables:** At a scheduled time, a real Zoom meeting is auto-created within the free-tier time limit and the link delivered to a test candidate account via Email.
 
 ### Phase 5: Live AI Interview Pipeline (Weeks 12–20) — Highest-Complexity Phase, Extended
-- Deploy **Vexa** (open source, self-hosted), **Whisper** (STT, quantized "small" model via faster-whisper for CPU performance), and **AI4Bharat Indic Parler-TTS/IndicF5** (TTS) together on the **Oracle Cloud Always Free VM** provisioned in Phase 0 — a persistent process, not a serverless deployment (TRD §3.7, §4).
+- Deploy **Vexa** (open source, self-hosted) and **AI4Bharat Indic Parler-TTS/IndicF5** (TTS) together on the **Oracle Cloud Always Free VM** provisioned in Phase 0 — a persistent process, not a serverless deployment (TRD §3.7, §4). Wire up **Groq-hosted Whisper** (STT — `whisper-large-v3-turbo` → `whisper-large-v3` chain, `app/connectors/speech_to_text.py`) as an API call from that same process; it does not run on the VM itself.
 - Build interview logic agent (via the LLM Router): resume-grounded question generation, adaptive follow-ups, standard protocol (opening → resume Qs → role Qs → adaptive follow-ups → closing).
 - Build disclosure step (spoken + written) confirming AI interviewer + recording consent at meeting start.
-- **New vs. the original plan:** dedicate explicit test time to quantifying the code-switching accuracy gap between self-hosted Whisper/AI4Bharat and the originally-specified commercial option (TRD §3.7) — this is why this phase is now 8 weeks instead of 6. Also measure real STT→LLM→TTS latency on the actual Oracle VM (expect 0.5–2s on CPU, per TRD §7) rather than assuming the ~1s target is met.
+- **New vs. the original plan:** dedicate explicit test time to quantifying the code-switching accuracy gap between the Whisper/AI4Bharat stack and the originally-specified commercial option (TRD §3.7) — this is why this phase is now 8 weeks instead of 6. Also measure real STT→LLM→TTS latency end-to-end (Groq-hosted STT + Oracle VM TTS, per TRD §7) rather than assuming the ~1s target is met — and specifically test what happens to a live interview if Groq's STT chain is exhausted or unreachable mid-call (TranscriptionUnavailable), since that's now a correlated risk with the LLM Router's own Groq fallback.
 - Extensive internal testing across all three languages and common code-switching patterns before any real candidate use.
 
 **Deliverables:** A functioning end-to-end AI-conducted interview in a test meeting, in each of English, Hindi, and Marathi, running entirely on the Oracle Cloud Always Free VM with $0 API/hosting spend; measured (not assumed) latency and code-switching accuracy numbers, with a documented decision on whether they're acceptable for real candidates or need a fallback (e.g., English-only, or a human-conducted interview) for a given session.
@@ -82,7 +82,7 @@
 | Backend Engineer (1–2) | Orchestration, integrations (Zoom, Email, LLM Router) |
 | Frontend Engineer (1) | Owner Console + candidate-facing screens |
 | ML/Conversational Engineer | Prompt design for requirement parsing, interview logic, scoring rubric; LLM Router fallback logic |
-| Voice/Speech + Self-Hosting Engineer | Whisper/AI4Bharat deployment and latency tuning, Vexa self-hosting/ops, code-switching validation — this role now carries more infrastructure/ops responsibility than the original Sarvam-API-integration scope |
+| Voice/Speech + Self-Hosting Engineer | AI4Bharat deployment and latency tuning, Vexa self-hosting/ops, Groq STT integration and code-switching validation — this role carries more infrastructure/ops responsibility than the original Sarvam-API-integration scope, though less than an all-self-hosted speech stack would have |
 | UX Designer | Wireframes, prototypes, candidate-facing localization review |
 | Compliance Advisor | Consent flows, EU AI Act / DPDP alignment |
 | QA Engineer | End-to-end testing, especially multilingual interview scenarios and LLM-router fallback/pause behavior |
@@ -125,11 +125,12 @@ Full detail, current free-tier terms, and usage-tracking live in **[07-Financial
 | Category | Notes |
 |---|---|
 | LLM (Gemini + Groq free tiers) ✅ | $0 — daily request caps, not a spending cap; router pauses rather than overspending (TRD §3.1a) |
-| Speech STT/TTS + Meeting Bot (self-hosted Whisper + AI4Bharat + Vexa, on Oracle Cloud Always Free VM) ✅ | $0 — a permanent free ARM VM (currently 2 OCPU/12GB RAM), not a trial; the right architectural fit since this is a long-running stateful process, not a serverless one (TRD §3.7, §4) |
+| TTS + Meeting Bot (self-hosted AI4Bharat + Vexa, on Oracle Cloud Always Free VM) ✅ | $0 — a permanent free ARM VM (currently 2 OCPU/12GB RAM), not a trial; the right architectural fit since this is a long-running stateful process, not a serverless one (TRD §3.7, §4) |
+| STT (Groq-hosted Whisper, `whisper-large-v3-turbo`/`whisper-large-v3`) ✅ | $0 — rate-limited, not cost-limited; shares Groq as a provider with the LLM Router fallback, a correlated-outage risk tracked in [07-Financial-Subscription-Tracking.md §5](./07-Financial-Subscription-Tracking.md) |
 | Email (Brevo) ✅ | Permanent free tier, 300/day — comfortably above pilot volume |
 | Zoom/Google Meet API ✅ | $0 at our scale — free Zoom Basic account covers 1:1 calls up to 40 min (our default interview length is 30 min); Google Meet fallback free with any Google account |
 | Resume parsing ✅ | $0 dedicated cost — handled by the LLM Router (already-incurred request budget above) + open-source PDF extraction, no separate vendor |
 | Supabase ✅ | Free tier (500MB DB, 1GB storage, 50K MAU) covers pilot scale; re-check before scaling past pilot |
 | Cloud infra — app layer (FastAPI/LangGraph backend API, frontend hosting) ✅ | Free tier: Cloud Run or Render for the stateless backend API (requirement parsing, form, distribution, notifications, scoring); Vercel/Netlify free tier for frontend. **Not** used for the voice/meeting-bot pipeline — see row above. |
-| Self-hosting engineering/ops time | Not a subscription cost, but real: Vexa, Whisper, and AI4Bharat all need deployment, monitoring, and update effort that a managed SaaS would otherwise absorb — factor into the Voice/Speech + Self-Hosting Engineer role's time budget |
+| Self-hosting engineering/ops time | Not a subscription cost, but real: Vexa and AI4Bharat need deployment, monitoring, and update effort that a managed SaaS would otherwise absorb — factor into the Voice/Speech + Self-Hosting Engineer role's time budget (Whisper no longer needs this, now Groq-hosted) |
 | Design & Dev team | Largest cost center, per roadmap above |

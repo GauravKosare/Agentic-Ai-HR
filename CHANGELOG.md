@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] — 2026-07-20 — Backend Connector Scaffold, Multi-Model Chains, Groq-Hosted STT
+
+### Added
+- `src/backend/` — first application code: Supabase connector, LLM Router connector, Speech-to-Text connector, config, tests, `.env.example`, and a `check_connectors.py` script that verifies each connector against real credentials without ever printing secret values.
+
+### Changed
+- **LLM Router redesigned as per-provider, per-tier model CHAINS**, not single models: Gemini tries `gemini-3.5-flash` → `gemini-3-flash` (reasoning) or `gemini-3.1-flash-lite` → `gemma-4-26b` → `gemma-4-31b` (light) before falling to Groq's chain (`openai/gpt-oss-120b` → `llama-3.3-70b-versatile` → `qwen/qwen3.6-27b` reasoning; `openai/gpt-oss-20b` → `llama-3.1-8b-instant` light). Only pauses once every model in both chains is exhausted. Model choices sourced from live account quota data, not vendor docs.
+- **Task-specific routing implemented**: a `Task` enum (one per named TRD/Workflow agent) maps to a tier in one place (`TASK_TIER`), so every LLM call site is explicit about which agent it's acting as.
+- **STT moved from self-hosted Whisper to Groq-hosted Whisper** (`whisper-large-v3-turbo` → `whisper-large-v3` chain) — LPU-accelerated, free, resolves the CPU-only latency risk directly. Documented and accepted trade-off: this makes Groq a second dependency alongside the LLM Router fallback, so a Groq outage affects both at once (correlated, not independent) — see 07-Financial-Subscription-Tracking.md §4a/§5.
+- Corrected a real credential mix-up (an xAI/Grok key was mistakenly used as the Groq key — different company, no free tier) and multiple stale model names (Groq deprecated `llama-3.3-70b-versatile`/`llama-3.1-8b-instant` on the free tier 2026-06-17; Gemini shut down 2.0 and stopped offering 2.5-flash-lite to new users) — all caught via live testing against real accounts, not assumed.
+- Switched Supabase to its new key format (`sb_secret_...`/`sb_publishable_...`) instead of the legacy `service_role`/`anon` JWTs, which are being deprecated by end of 2026.
+- Updated TRD, PRD, Workflow, Implementation Plan, README, and the Financial & Subscription Tracking doc to match.
+
 ## [0.3.1] — 2026-07-19 — Voice Pipeline Hosting: Oracle Cloud Always Free VM
 
 ### Changed

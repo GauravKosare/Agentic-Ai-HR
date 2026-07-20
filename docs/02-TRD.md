@@ -48,18 +48,18 @@ Delivered as a **web application** — a React/TypeScript frontend (Owner Consol
                      └───────────────┬───────────────┘
         ┌───────────────┬────────────┼────────────┬───────────────┐
         ▼               ▼            ▼            ▼               ▼
-   Zoom API         Google Meet   Self-hosted     Self-hosted    Scoring
-   (instant          API           Meeting Bot     Speech         Agent
-   meeting,          (fallback)    (Vexa, open      (Whisper STT + (LLM
-   primary,                        source, self-    AI4Bharat TTS,  Router)
-   free 1:1)                       hosted, $0)       self-hosted)
+   Zoom API         Google Meet   Self-hosted     Speech Pipeline  Scoring
+   (instant          API           Meeting Bot     (Groq Whisper    Agent
+   meeting,          (fallback)    (Vexa, open      STT, hosted +   (LLM
+   primary,                        source, self-    self-hosted     Router)
+   free 1:1)                       hosted, $0)       AI4Bharat TTS)
                                          │
                                          ▼
                                   Interview Transcript
                                   + Scorecard → Dashboard
                                   → Owner Confirms Decision
 ```
-*The "Self-hosted Meeting Bot" and "Self-hosted Speech" blocks run together on one persistent Oracle Cloud Always Free VM — see §3.7 and §4 (Hosting).*
+*The "Self-hosted Meeting Bot" and TTS half of "Speech Pipeline" run together on one persistent Oracle Cloud Always Free VM — see §3.7 and §4 (Hosting). STT is a Groq API call, not hosted on that VM.*
 
 ## 3. Core Components
 
@@ -71,9 +71,10 @@ Delivered as a **web application** — a React/TypeScript frontend (Owner Consol
 ### 3.1a LLM Router / Quota Manager — the zero-cost LLM layer
 Every LLM call in the system (requirement parsing, form generation, resume parsing, interview dialogue, scoring) goes through one router instead of calling a model directly:
 
-1. **Primary: Google Gemini API, free tier.** Gemini 2.5 Flash for reasoning-heavy calls (interview dialogue, scoring, requirement parsing); Gemini 2.5 Flash-Lite for high-volume/light calls (dedup checks, simple classification, resume field extraction). Free tier is enforced by Google as long as billing is not enabled on the project — do not enable billing, or the free tier disappears.
-2. **Fallback: Groq API, free tier.** On a Gemini `429` (daily/per-minute quota hit), the router automatically retries the same request against Groq's free tier (Llama 3.3 70B for reasoning calls, Llama 3.1 8B Instant for light calls). Groq's free tier requires no card and does not expire.
-3. **Exhaustion — pause, don't spend.** If Groq's free tier *also* returns a quota-exceeded response for the same request, the router does **not** fall through to any paid model. Instead it:
+1. **Primary: Google Gemini API, free tier — per-tier model CHAIN, not a single model.** Each tier (reasoning / light) has an ordered list of models; a quota (`429`) error on one model moves to the *next model in the same chain* before ever switching provider, since Gemini's free daily quota is per-model, not per-account. As of 2026-07-20: reasoning tries `gemini-3.5-flash` then `gemini-3-flash` (each carries its own small daily quota — chaining roughly doubles the daily reasoning budget); light tries `gemini-3.1-flash-lite` then Google's open-weight `gemma-4-26b`/`gemma-4-31b` served through the same API, which carry a much larger daily allowance and act as a large free reserve before Groq is ever touched. Free tier is enforced by Google as long as billing is not enabled on the project — do not enable billing, or the free tier disappears. *(Model names and per-model quotas last verified against a live account 2026-07-20 — Gemini 2.0 was shut down 2026-06-01 and 2.5 Flash-Lite is no longer offered to new users, and free-tier limits are account-specific and drift; re-check yours in Google AI Studio rather than trusting this document, see [src/backend/app/core/config.py](../src/backend/app/core/config.py).)*
+2. **Fallback: Groq API, free tier — also a per-tier chain.** Once every model in Gemini's chain for that tier is quota-exhausted, the router walks Groq's chain for the same tier the same way. As of 2026-07-20: reasoning tries `openai/gpt-oss-120b` then `llama-3.3-70b-versatile` then `qwen/qwen3.6-27b` (each with its own ~1K/day quota, verified from Groq's live rate-limits console); light tries `openai/gpt-oss-20b` then `llama-3.1-8b-instant`, which carries a far larger free daily allowance than every other model in either chain and is deliberately saved for last as the deep reserve. Groq's free tier requires no card and does not expire. *(Model lineups and rate limits change — Groq flagged `llama-3.3-70b-versatile`/`llama-3.1-8b-instant` for migration on 2026-06-17 but both were still live with published quotas as of this verification; re-check console.groq.com/docs/rate-limits before relying on this document.)*
+3. **Task-specific routing.** Each named agent below (Requirement Parser, Form Builder, resume parsing, Response Monitor's dedup/classification step, Meeting Bot interview dialogue, Scoring Agent) maps to exactly one tier — reasoning or light — enforced in one place in the router, not decided ad hoc per call site. See `TASK_TIER` in the code linked above.
+4. **Exhaustion — pause, don't spend.** Only once *every model in both providers' chains* for that tier has returned quota-exceeded does the router stop — it does **not** fall through to any paid model. Instead it:
    - Sets a system-wide `ai_paused` flag (with a `resume_at` timestamp — Gemini's daily quota resets at 00:00 Pacific Time; Groq's free-tier reset timing must be re-verified against current docs before relying on it, see [07-Financial-Subscription-Tracking.md](./07-Financial-Subscription-Tracking.md)).
    - Sends the Owner **one** notification (Email) — a "last reminder" summarizing what ran out (Gemini and/or Groq), how many requests/tokens were used today, and when the system will resume automatically.
    - Halts every AI-dependent action (parsing, form drafting, interview dialogue, scoring) until the quota window resets, at which point the router clears `ai_paused` and resumes automatically — no manual restart needed.
@@ -112,10 +113,11 @@ Every LLM call in the system (requirement parsing, form generation, resume parsi
 
 ### 3.7 Meeting Bot / Live Interview Agent
 - Uses **Vexa** (Apache 2.0 licensed, open source, self-hosted — [vexa.ai](https://vexa.ai)) to join the Zoom/Meet call as a participant and stream audio, instead of a paid meeting-bot SaaS. Self-hosting means the only cost is the compute Vexa runs on (see Hosting, §4) — there is no per-minute vendor fee. This directly replaces Recall.ai/MeetStream.ai, whose free tier is a one-time 5 hours before per-minute billing kicks in.
-- Real-time audio pipeline: candidate speech → **self-hosted Whisper** (STT, open source) → transcribed text → **LLM Router** (§3.1a — question generation/adaptive follow-up, grounded in the candidate's resume + prior answers) → **self-hosted AI4Bharat Indic Parler-TTS / IndicF5** (TTS, open source) → spoken response back into the meeting.
-- **Honest capability trade-off vs. the original Sarvam AI design:** Sarvam AI was purpose-built for Hindi/Marathi/English natural code-switching and was chosen specifically for that reason. Open-source Whisper (optionally an Indic-fine-tuned variant such as `whisper-hindi-small`) handles single-language Hindi/Marathi reasonably well but is measurably weaker on aggressive code-switching (Hindi/English boundaries shifting every few seconds) than a purpose-built commercial model — this is a known, documented limitation of current open models, not an integration bug. AI4Bharat's Indic Parler-TTS/IndicF5 cover Hindi, Marathi, and English natively and are actively maintained. Budget dedicated multilingual/code-switching test time in Phase 5 ([05-Implementation-Plan.md](./05-Implementation-Plan.md)) to quantify the real-world gap before relying on this for live candidate interviews.
-- **Latency:** GPU inference is never free on any mainstream cloud (e.g., Cloud Run GPU is ~$0.67/hr with no free tier at all), so the zero-cost policy means CPU-only inference. This is more workable than it first appears: a **quantized Whisper "small" model (via faster-whisper, int8)** runs close to real-time on CPU alone, with practical latency around 0.5–2 seconds — short of the ~1s ideal target in §7 but usable. AI4Bharat's smaller TTS models are expected to behave similarly on CPU but have not yet been latency-benchmarked for this project; do that in Phase 5 before relying on the number. Revisit GPU budget only if pilot testing shows CPU latency is unacceptable to real candidates.
-- **Hosting fit:** run the Vexa + Whisper + AI4Bharat pipeline on a **persistent VM** (see §4, Hosting — Oracle Cloud Always Free tier), not a serverless/request-response platform. This process holds state for the duration of an entire interview (open audio stream, running conversation context) — architecturally a poor fit for Cloud Run/Render's spin-up-per-request model, independent of the cost question.
+- Real-time audio pipeline: candidate speech → **Groq-hosted Whisper** (STT — `whisper-large-v3-turbo` primary, `whisper-large-v3` fallback, LPU-accelerated, free tier, `app/connectors/speech_to_text.py`) → transcribed text → **LLM Router** (§3.1a — question generation/adaptive follow-up, grounded in the candidate's resume + prior answers) → **self-hosted AI4Bharat Indic Parler-TTS / IndicF5** (TTS, open source) → spoken response back into the meeting.
+- **STT is hosted, not self-hosted — revised from the original plan.** Self-hosted CPU-only Whisper was the original design, but it carried a real latency risk against the ~1s target below. Groq's free-tier hosted Whisper (LPU-accelerated) resolves that risk directly, at $0, with no self-hosting/ops burden — confirmed working end-to-end 2026-07-20. The trade-off: this makes Groq a **second dependency** alongside its role as the LLM Router's fallback (§3.1a) — a Groq-wide outage affects both the LLM fallback path and STT at the same time (a correlated failure, not two independent ones), and there is currently no second STT provider to fall back to if Groq's whole STT chain is exhausted or down (`TranscriptionUnavailable`, distinct from `AIQuotaExhausted`). See [07-Financial-Subscription-Tracking.md §4a](./07-Financial-Subscription-Tracking.md) for the full decision record.
+- **Honest capability trade-off vs. the original Sarvam AI design:** Sarvam AI was purpose-built for Hindi/Marathi/English natural code-switching and was chosen specifically for that reason. Whisper-large-v3 handles single-language Hindi/Marathi well but is measurably weaker on aggressive code-switching (Hindi/English boundaries shifting every few seconds) than a purpose-built commercial model — this is a known, documented limitation of current Whisper-family models, not an integration bug. AI4Bharat's Indic Parler-TTS/IndicF5 cover Hindi, Marathi, and English natively and are actively maintained. Budget dedicated multilingual/code-switching test time in Phase 5 ([05-Implementation-Plan.md](./05-Implementation-Plan.md)) to quantify the real-world gap before relying on this for live candidate interviews.
+- **Latency:** GPU inference is never free on any mainstream cloud (e.g., Cloud Run GPU is ~$0.67/hr with no free tier at all) — but Groq's hosted Whisper sidesteps that entirely, since it runs on Groq's own LPU hardware at no cost to us. TTS remains the CPU-bound piece: AI4Bharat's models are expected to run close to real-time on CPU but have not yet been latency-benchmarked for this project; do that in Phase 5 before relying on a number. Revisit GPU budget only if pilot testing shows TTS latency is unacceptable to real candidates.
+- **Hosting fit:** run Vexa + AI4Bharat TTS on a **persistent VM** (see §4, Hosting — Oracle Cloud Always Free tier), not a serverless/request-response platform — this process holds state for the duration of an entire interview (open audio stream, running conversation context), architecturally a poor fit for Cloud Run/Render's spin-up-per-request model. STT no longer needs this VM at all, since it's a hosted API call now, not a local model.
 - Follows a standard interview protocol: opening/rapport → resume-specific questions → role-relevant technical/behavioral questions → adaptive follow-ups → closing.
 - Candidate is informed at meeting start (spoken + earlier written notice) that the interviewer is AI and the session is recorded.
 
@@ -149,7 +151,7 @@ Every LLM call in the system (requirement parsing, form generation, resume parsi
 | Email | **Brevo** (permanent free tier, 300 emails/day) — sole candidate messaging channel |
 | Video Meeting Creation | Zoom API (primary, free Basic account — 40 min cap on 1:1 calls, comfortably above our 30-min default); Google Meet API (secondary/fallback, free with any Google account) |
 | Meeting Bot (AI joins call) | **Vexa** — open source (Apache 2.0), self-hosted, cross-platform (Zoom/Meet/Teams), no per-minute vendor fee |
-| Speech (STT) | **Self-hosted OpenAI Whisper** (open source), optionally an Indic-fine-tuned variant for improved Hindi/Marathi accuracy |
+| Speech (STT) | **Groq-hosted Whisper** (`whisper-large-v3-turbo` → `whisper-large-v3` chain, LPU-accelerated, free tier) — not self-hosted; see TRD §3.7 for the correlated-outage trade-off with the LLM Router's Groq fallback |
 | Speech (TTS) | **Self-hosted AI4Bharat Indic Parler-TTS / IndicF5** (open source) — Hindi, Marathi, English |
 | Backend API | FastAPI (Python) — hosts the orchestrator, calls Supabase via service-role key for privileged operations |
 | Frontend (Owner Console + candidate pages) | React + TypeScript, Tailwind — talks to Supabase directly (Auth, Realtime, Storage) for client-safe operations, and to the FastAPI backend for agent/orchestration actions |
@@ -174,9 +176,9 @@ Full free-tier terms, usage tracking, and the decision record for every swap abo
 | Gemini API | Primary LLM (free tier) | Self-serve via Google AI Studio; free while billing is disabled on the project |
 | Groq API | Fallback LLM (free tier) | Self-serve, no card required, no expiry |
 | Vexa | Meeting bot join + audio stream | Open source (Apache 2.0), self-hosted — no vendor account/billing at all |
-| Whisper (OpenAI, open source) | STT | Self-hosted, free — run on own compute |
+| Groq (Whisper STT) | STT — `whisper-large-v3-turbo` → `whisper-large-v3` chain | Self-serve, free tier, LPU-accelerated hosted API — not self-hosted; same GROQ_API_KEY as the LLM Router fallback |
 | AI4Bharat Indic Parler-TTS / IndicF5 | TTS (Hindi/Marathi/English) | Self-hosted, free — run on own compute |
-| **Oracle Cloud Always Free tier** | Persistent VM hosting the Vexa + Whisper + AI4Bharat pipeline | Self-serve, permanent free ARM VM (currently 2 OCPU/12GB RAM — Oracle cut this from 4 OCPU/24GB in June 2026 with no announcement; verify current allocation at signup and re-check periodically, see [07-Financial-Subscription-Tracking.md](./07-Financial-Subscription-Tracking.md)) |
+| **Oracle Cloud Always Free tier** | Persistent VM hosting Vexa + AI4Bharat TTS (STT moved off this VM — now Groq-hosted, see above) | Self-serve, permanent free ARM VM (currently 2 OCPU/12GB RAM — Oracle cut this from 4 OCPU/24GB in June 2026 with no announcement; verify current allocation at signup and re-check periodically, see [07-Financial-Subscription-Tracking.md](./07-Financial-Subscription-Tracking.md)) |
 
 ### 5.1 Supabase Usage Detail
 
@@ -193,7 +195,7 @@ Full free-tier terms, usage tracking, and the decision record for every swap abo
 3. Response Monitor Agent tracks applications → fires event at ≥5 responses; Owner Console reflects the live count via Supabase Realtime.
 4. Notification Agent sends interview invite via Email (candidate's language) with date/time/format/protocol.
 5. Candidate confirms → Meeting Orchestration Agent creates Zoom/Meet instant meeting at scheduled time (≤40 min, free-tier constraint) → sends join link.
-6. Vexa (self-hosted meeting bot) joins → real-time STT (self-hosted Whisper) → LLM Router interview logic → real-time TTS (self-hosted AI4Bharat) → live conversation; recording lands in Supabase Storage.
+6. Vexa (self-hosted meeting bot) joins → real-time STT (Groq-hosted Whisper) → LLM Router interview logic → real-time TTS (self-hosted AI4Bharat) → live conversation; recording lands in Supabase Storage.
 7. Scoring Agent (via LLM Router) generates scorecard from transcript → surfaced on Owner Console (web app).
 8. Owner reviews and confirms final decision → status updated in Supabase → candidate notified via Email.
 
@@ -202,7 +204,7 @@ Full free-tier terms, usage tracking, and the decision record for every swap abo
 ## 7. Performance Requirements
 
 - Requirement-to-form-draft: under 2 minutes of processing time (assuming the LLM Router is not in a paused state).
-- Real-time interview STT→LLM→TTS round trip: target under ~1 second for natural conversational pacing — realistically **0.5–2 seconds on the CPU-only Oracle Cloud Always Free VM** (§3.7, §4); validate against actual pilot hosting before treating the ~1s figure as guaranteed.
+- Real-time interview STT→LLM→TTS round trip: target under ~1 second for natural conversational pacing. STT (Groq-hosted Whisper) is LPU-accelerated and not expected to be the bottleneck; TTS (self-hosted AI4Bharat) runs CPU-only on the Oracle Cloud Always Free VM and has not yet been latency-benchmarked (§3.7, §4) — validate against actual pilot hosting before treating the ~1s figure as guaranteed.
 - Email dispatch after threshold trigger: under 5 minutes.
 - Meeting bot join time after meeting creation: under 30 seconds.
 

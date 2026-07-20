@@ -30,7 +30,7 @@ flowchart TD
     P --> Q[Join link sent via Email]
     Q --> R[Self-hosted Meeting Bot - Vexa - joins call as participant]
     R --> S[AI discloses: interview is AI-conducted and recorded]
-    S --> T[Live interview: self-hosted Whisper STT to LLM Router - Gemini then Groq - to self-hosted AI4Bharat TTS]
+    S --> T[Live interview: Groq-hosted Whisper STT to LLM Router - Gemini then Groq - to self-hosted AI4Bharat TTS]
     T --> U[Structured protocol: opening, resume questions, role questions, adaptive follow-ups, closing]
     U --> V[Transcript + scorecard generated]
     V --> W[Owner Dashboard: reviews scorecard and transcript]
@@ -74,9 +74,9 @@ flowchart TD
 - Join link is sent via Email shortly before start time.
 
 ### Stage 7: Live AI-Conducted Interview
-- **Vexa** (open source, self-hosted meeting-bot software) joins the call as a participant — no host permission required, works the same way across Zoom and Meet, no per-minute vendor fee. Vexa, Whisper, and the TTS model all run together on one **persistent Oracle Cloud Always Free VM** for the duration of the call (TRD §3.7/§4) — a deliberately different hosting shape from the rest of the system, which runs on serverless free tiers.
+- **Vexa** (open source, self-hosted meeting-bot software) joins the call as a participant — no host permission required, works the same way across Zoom and Meet, no per-minute vendor fee. Vexa and the TTS model run together on one **persistent Oracle Cloud Always Free VM** for the duration of the call (TRD §3.7/§4) — a deliberately different hosting shape from the rest of the system, which runs on serverless free tiers. STT is a Groq API call, not on this VM.
 - At join, the AI **clearly discloses** that it is an AI interviewer and that the session is recorded (reinforcing the earlier written notice).
-- Real-time pipeline: candidate's spoken answer → **self-hosted Whisper (STT)** → **LLM Router** (Gemini free tier, Groq free tier fallback — question logic, grounded in resume + running conversation) → **self-hosted AI4Bharat Indic Parler-TTS/IndicF5 (TTS)** → spoken back into the meeting.
+- Real-time pipeline: candidate's spoken answer → **Groq-hosted Whisper (STT)** → **LLM Router** (Gemini free tier, Groq free tier fallback — question logic, grounded in resume + running conversation) → **self-hosted AI4Bharat Indic Parler-TTS/IndicF5 (TTS)** → spoken back into the meeting.
 - Handles English, Hindi, and Marathi; code-switching accuracy is weaker than a purpose-built commercial model (an accepted trade-off for zero cost — see TRD §3.7) and should be validated with dedicated multilingual testing before real candidate use.
 - Follows a standard protocol: opening/rapport → resume-specific questions → role-relevant technical/behavioral questions → adaptive follow-ups based on answers → closing and next-steps note.
 

@@ -36,9 +36,10 @@ All product, technical, and design specifications live in [`/docs`](./docs):
 | Capability | Chosen Tech | Why |
 |---|---|---|
 | Orchestration / reasoning (LLM) | **Gemini API (free tier)** primary, **Groq API (free tier)** fallback, via an LLM Router | Zero recurring cost — the router pauses gracefully (with an Owner reminder) rather than ever calling a paid model when both free tiers are exhausted for the day |
-| Multilingual speech (STT/TTS) | Self-hosted **Whisper** (STT) + **AI4Bharat Indic Parler-TTS/IndicF5** (TTS) | Open source, $0 API cost; accepted trade-off is weaker Hindi/Marathi code-switching accuracy than a purpose-built commercial option — see [07-Financial-Subscription-Tracking.md](./docs/07-Financial-Subscription-Tracking.md) |
+| Speech-to-text | **Groq-hosted Whisper** (`whisper-large-v3-turbo` → `whisper-large-v3` chain) | Free tier, LPU-accelerated — not self-hosted; shares Groq as a provider with the LLM Router fallback (correlated-outage trade-off, see [07-Financial-Subscription-Tracking.md](./docs/07-Financial-Subscription-Tracking.md)) |
+| Text-to-speech | Self-hosted **AI4Bharat Indic Parler-TTS/IndicF5** | Open source, $0 API cost; accepted trade-off is weaker Hindi/Marathi code-switching accuracy than a purpose-built commercial option |
 | Live meeting join | Self-hosted **Vexa** (open source, Apache 2.0) | Cross-platform (Zoom/Meet/Teams), no host permission required, no per-minute vendor fee — replaces Recall.ai/MeetStream.ai |
-| Voice pipeline hosting | **Oracle Cloud Always Free ARM VM** (Vexa + Whisper + AI4Bharat together) | A permanent free VM, not a trial — the right fit for this long-running, stateful process, unlike serverless Cloud Run/Render |
+| Voice pipeline hosting | **Oracle Cloud Always Free ARM VM** (Vexa + AI4Bharat TTS) | A permanent free VM, not a trial — the right fit for this long-running, stateful process, unlike serverless Cloud Run/Render. STT is a Groq API call, not on this VM. |
 | Meeting creation | Zoom API (primary, free Basic account — 40 min/1:1 cap), Google Meet API (fallback) | $0 at pilot scale; interviews default to 30 min, comfortably under the free cap |
 | Candidate messaging | **Email only**, via Brevo (permanent free tier) | WhatsApp was evaluated and removed — Meta bills business-initiated template messages with no zero-cost path |
 | Resume parsing | Same Gemini/Groq LLM Router + open-source PDF extraction (PyMuPDF/pdfplumber) | No dedicated paid vendor |
