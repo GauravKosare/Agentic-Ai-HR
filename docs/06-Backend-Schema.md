@@ -210,7 +210,7 @@ CREATE TABLE meetings (
 CREATE TABLE interview_sessions (
     session_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     meeting_id       UUID REFERENCES meetings(meeting_id),
-    bot_provider     VARCHAR(50),            -- 'vexa' (self-hosted, open source)
+    bot_provider     VARCHAR(50),            -- 'playwright_chromium' (custom, self-hosted; replaces Vexa — TRD §3.7)
     disclosure_confirmed BOOLEAN DEFAULT false,  -- AI-interviewer + recording disclosure given
     primary_language  VARCHAR(10) CHECK (primary_language IN ('en','hi','mr')),
     started_at       TIMESTAMPTZ,

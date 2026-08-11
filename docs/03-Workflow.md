@@ -28,9 +28,9 @@ flowchart TD
     N --> O[Candidate confirms interview slot]
     O --> P[At scheduled time: AI creates Zoom instant meeting, free tier, less than 40 min - or Google Meet fallback]
     P --> Q[Join link sent via Email]
-    Q --> R[Self-hosted Meeting Bot - Vexa - joins call as participant]
+    Q --> R[Custom Playwright/Chromium bot joins call via web client]
     R --> S[AI discloses: interview is AI-conducted and recorded]
-    S --> T[Live interview: Groq-hosted Whisper STT to LLM Router - Gemini then Groq - to self-hosted AI4Bharat TTS]
+    S --> T[Live interview: Chrome SpeechRecognition STT to LLM Router - Gemini then Groq - to Chrome speechSynthesis TTS, fallback Groq Whisper / AI4Bharat]
     T --> U[Structured protocol: opening, resume questions, role questions, adaptive follow-ups, closing]
     U --> V[Transcript + scorecard generated]
     V --> W[Owner Dashboard: reviews scorecard and transcript]
@@ -74,10 +74,10 @@ flowchart TD
 - Join link is sent via Email shortly before start time.
 
 ### Stage 7: Live AI-Conducted Interview
-- **Vexa** (open source, self-hosted meeting-bot software) joins the call as a participant — no host permission required, works the same way across Zoom and Meet, no per-minute vendor fee. Vexa and the TTS model run together on one **persistent Oracle Cloud Always Free VM** for the duration of the call (TRD §3.7/§4) — a deliberately different hosting shape from the rest of the system, which runs on serverless free tiers. STT is a Groq API call, not on this VM.
+- A **custom Playwright/Chromium bot** (self-hosted, replaces Vexa — TRD §3.7) joins the call via Zoom/Meet's browser web-join URL — no host permission required, no native app, no per-minute vendor fee. The bot and its TTS fallback (AI4Bharat) run on one **persistent Oracle Cloud Always Free VM** for the duration of the call (TRD §3.7/§4) — a deliberately different hosting shape from the rest of the system, which runs on serverless free tiers.
 - At join, the AI **clearly discloses** that it is an AI interviewer and that the session is recorded (reinforcing the earlier written notice).
-- Real-time pipeline: candidate's spoken answer → **Groq-hosted Whisper (STT)** → **LLM Router** (Gemini free tier, Groq free tier fallback — question logic, grounded in resume + running conversation) → **self-hosted AI4Bharat Indic Parler-TTS/IndicF5 (TTS)** → spoken back into the meeting.
-- Handles English, Hindi, and Marathi; code-switching accuracy is weaker than a purpose-built commercial model (an accepted trade-off for zero cost — see TRD §3.7) and should be validated with dedicated multilingual testing before real candidate use.
+- Real-time pipeline: candidate's spoken answer → **Chrome's built-in `SpeechRecognition` (STT, in-browser)**, falling back to Groq-hosted Whisper if unavailable → **LLM Router** (Gemini free tier, Groq free tier fallback — question logic, grounded in resume + running conversation) → **Chrome's built-in `speechSynthesis` (TTS, in-browser)**, falling back to self-hosted AI4Bharat → spoken back into the meeting.
+- Handles English, Hindi, and Marathi; code-switching accuracy is weaker than a purpose-built commercial model regardless of which STT path is active (an accepted trade-off for zero cost — see TRD §3.7), and Chrome's TTS voice quality/availability on the headless Linux host is unvalidated — both need dedicated multilingual/voice-quality testing before real candidate use.
 - Follows a standard protocol: opening/rapport → resume-specific questions → role-relevant technical/behavioral questions → adaptive follow-ups based on answers → closing and next-steps note.
 
 ### Stage 8: Scoring & Human Review

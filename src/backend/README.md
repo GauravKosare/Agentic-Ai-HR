@@ -1,6 +1,6 @@
 # Backend — Setup
 
-Foundation connectors only so far: **Supabase** and the **LLM Router** (Gemini → Groq, TRD §3.1a). Later phases add Brevo, Zoom, Google Meet, and the Vexa/Whisper/AI4Bharat voice pipeline — see [05-Implementation-Plan.md](../../docs/05-Implementation-Plan.md).
+Foundation connectors so far: **Supabase**, the **LLM Router** (Gemini → Groq, TRD §3.1a), and **Speech-to-Text** (Groq-hosted Whisper, now a fallback behind Chrome's in-browser `SpeechRecognition` per TRD §3.7). Later phases add Brevo, Zoom, Google Meet, and the custom Playwright/Chromium meeting-bot pipeline — see [05-Implementation-Plan.md](../../docs/05-Implementation-Plan.md).
 
 ## Setup
 

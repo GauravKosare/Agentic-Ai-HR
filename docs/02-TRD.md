@@ -48,18 +48,19 @@ Delivered as a **web application** — a React/TypeScript frontend (Owner Consol
                      └───────────────┬───────────────┘
         ┌───────────────┬────────────┼────────────┬───────────────┐
         ▼               ▼            ▼            ▼               ▼
-   Zoom API         Google Meet   Self-hosted     Speech Pipeline  Scoring
-   (instant          API           Meeting Bot     (Groq Whisper    Agent
-   meeting,          (fallback)    (Vexa, open      STT, hosted +   (LLM
-   primary,                        source, self-    self-hosted     Router)
-   free 1:1)                       hosted, $0)       AI4Bharat TTS)
+   Zoom API         Google Meet   Custom Chrome    In-Browser      Scoring
+   (instant          API           Bot (Playwright, Speech (Chrome  Agent
+   meeting,          (fallback)    self-hosted,     SpeechRecog +   (LLM
+   primary,                        joins via web     speechSynthesis, Router)
+   free 1:1)                       client, $0)       fallback: Groq
+                                                       STT/AI4Bharat TTS)
                                          │
                                          ▼
                                   Interview Transcript
                                   + Scorecard → Dashboard
                                   → Owner Confirms Decision
 ```
-*The "Self-hosted Meeting Bot" and TTS half of "Speech Pipeline" run together on one persistent Oracle Cloud Always Free VM — see §3.7 and §4 (Hosting). STT is a Groq API call, not hosted on that VM.*
+*The Playwright/Chromium bot (and its AI4Bharat TTS fallback) run together on one persistent Oracle Cloud Always Free VM — see §3.7 and §4 (Hosting). Chrome's `SpeechRecognition`/`speechSynthesis` run inside that same browser process; the Groq STT fallback is an API call, not hosted on the VM.*
 
 ## 3. Core Components
 
@@ -111,13 +112,15 @@ Every LLM call in the system (requirement parsing, form generation, resume parsi
 - **Free-tier constraint:** a Zoom Basic (free) account is capped at 40 minutes per meeting, including 1:1 calls. Interviews must stay at or under this — the system already defaults `interview_time_limit_minutes` to 30 (see [06-Backend-Schema.md](./06-Backend-Schema.md)), which fits comfortably. If the Owner ever raises the default above 40 minutes, this becomes a paid-Zoom-account requirement and must be flagged.
 - Sends the join link via Email shortly before the scheduled time.
 
-### 3.7 Meeting Bot / Live Interview Agent
-- Uses **Vexa** (Apache 2.0 licensed, open source, self-hosted — [vexa.ai](https://vexa.ai)) to join the Zoom/Meet call as a participant and stream audio, instead of a paid meeting-bot SaaS. Self-hosting means the only cost is the compute Vexa runs on (see Hosting, §4) — there is no per-minute vendor fee. This directly replaces Recall.ai/MeetStream.ai, whose free tier is a one-time 5 hours before per-minute billing kicks in.
-- Real-time audio pipeline: candidate speech → **Groq-hosted Whisper** (STT — `whisper-large-v3-turbo` primary, `whisper-large-v3` fallback, LPU-accelerated, free tier, `app/connectors/speech_to_text.py`) → transcribed text → **LLM Router** (§3.1a — question generation/adaptive follow-up, grounded in the candidate's resume + prior answers) → **self-hosted AI4Bharat Indic Parler-TTS / IndicF5** (TTS, open source) → spoken response back into the meeting.
-- **STT is hosted, not self-hosted — revised from the original plan.** Self-hosted CPU-only Whisper was the original design, but it carried a real latency risk against the ~1s target below. Groq's free-tier hosted Whisper (LPU-accelerated) resolves that risk directly, at $0, with no self-hosting/ops burden — confirmed working end-to-end 2026-07-20. The trade-off: this makes Groq a **second dependency** alongside its role as the LLM Router's fallback (§3.1a) — a Groq-wide outage affects both the LLM fallback path and STT at the same time (a correlated failure, not two independent ones), and there is currently no second STT provider to fall back to if Groq's whole STT chain is exhausted or down (`TranscriptionUnavailable`, distinct from `AIQuotaExhausted`). See [07-Financial-Subscription-Tracking.md §4a](./07-Financial-Subscription-Tracking.md) for the full decision record.
-- **Honest capability trade-off vs. the original Sarvam AI design:** Sarvam AI was purpose-built for Hindi/Marathi/English natural code-switching and was chosen specifically for that reason. Whisper-large-v3 handles single-language Hindi/Marathi well but is measurably weaker on aggressive code-switching (Hindi/English boundaries shifting every few seconds) than a purpose-built commercial model — this is a known, documented limitation of current Whisper-family models, not an integration bug. AI4Bharat's Indic Parler-TTS/IndicF5 cover Hindi, Marathi, and English natively and are actively maintained. Budget dedicated multilingual/code-switching test time in Phase 5 ([05-Implementation-Plan.md](./05-Implementation-Plan.md)) to quantify the real-world gap before relying on this for live candidate interviews.
-- **Latency:** GPU inference is never free on any mainstream cloud (e.g., Cloud Run GPU is ~$0.67/hr with no free tier at all) — but Groq's hosted Whisper sidesteps that entirely, since it runs on Groq's own LPU hardware at no cost to us. TTS remains the CPU-bound piece: AI4Bharat's models are expected to run close to real-time on CPU but have not yet been latency-benchmarked for this project; do that in Phase 5 before relying on a number. Revisit GPU budget only if pilot testing shows TTS latency is unacceptable to real candidates.
-- **Hosting fit:** run Vexa + AI4Bharat TTS on a **persistent VM** (see §4, Hosting — Oracle Cloud Always Free tier), not a serverless/request-response platform — this process holds state for the duration of an entire interview (open audio stream, running conversation context), architecturally a poor fit for Cloud Run/Render's spin-up-per-request model. STT no longer needs this VM at all, since it's a hosted API call now, not a local model.
+### 3.7 Meeting Bot / Live Interview Agent — Browser-Native Design (revised 2026-07-20)
+- **Meeting join is now a custom, self-hosted Chrome bot, not Vexa.** A **Playwright-driven Chromium browser** joins the Zoom/Meet call via each platform's browser-based web-join URL (no native app install, no host permission needed) — this replaces Vexa entirely. The reason: Chrome's Web Speech APIs (`SpeechRecognition`, `speechSynthesis`) only run inside a live browser page, not as a headless audio-processing service, so the bot needs to actually *be* a browser tab we control rather than a service that just hands us raw audio bytes (which is what Vexa provided).
+- **STT primary: Chrome's built-in `SpeechRecognition`**, running inside that browser tab — free, no API key, no per-minute cost. **STT fallback:** the already-built Groq-hosted Whisper chain (`whisper-large-v3-turbo` → `whisper-large-v3`, `app/connectors/speech_to_text.py`, kept rather than discarded) if in-browser recognition is unavailable or fails.
+- **TTS primary: Chrome's built-in `speechSynthesis`**, same tab, same reasoning — free, and typically lower-latency than a network round-trip to a hosted model since synthesis happens locally in the browser process. **Open risk, not yet validated:** this bot runs headless on a Linux VM (Oracle Cloud, §4), and Chrome's available `speechSynthesis` voices — especially quality Hindi/Marathi voices — depend entirely on what speech engines are installed on that OS. Desktop Chrome (Windows/macOS) typically has good voices available; a bare Linux server often only has robotic default voices (e.g., espeak-ng) unless better ones are installed. **This must be tested early in Phase 5** ([05-Implementation-Plan.md](./05-Implementation-Plan.md)) before committing to it for real candidates. Self-hosted **AI4Bharat Indic Parler-TTS/IndicF5** remains documented as the fallback/mitigation if Chrome's Linux voice quality proves unacceptable — not deleted from the design, demoted to contingency.
+- Real-time pipeline: candidate speech (arrives via the meeting's WebRTC audio) → routed into the bot's browser tab as its "microphone" input → **Chrome `SpeechRecognition`** (STT) → transcribed text → **LLM Router** (§3.1a — question generation/adaptive follow-up, grounded in resume + prior answers) → **Chrome `speechSynthesis`** (TTS) → routed back out as the bot's own "microphone" audio into the meeting.
+- **The genuinely new engineering piece: virtual audio routing.** Getting the meeting's incoming audio into `SpeechRecognition` and the bot's synthesized speech back out as its own mic input requires an OS-level virtual audio loopback (e.g., a Linux `pulseaudio`/`pipewire` loopback device) connecting the browser tab's audio in/out to the WebRTC call. This is comparable in complexity to what Vexa/Recall.ai solve internally — the difference is we're building it ourselves for $0 instead of paying a vendor or depending on Vexa's smaller/newer open-source project. Budget real time for this in Phase 5; it is the highest-uncertainty piece of the whole system.
+- **Honest capability trade-off vs. the original Sarvam AI design:** unchanged in kind from the prior Whisper-based plan — Chrome's `SpeechRecognition` (which is itself cloud-processed by Google under the hood, not on-device) is expected to be weaker on Hindi/Marathi code-switching than a purpose-built commercial model, and its accuracy on Indian languages specifically has not been benchmarked for this project. Budget dedicated multilingual/code-switching test time in Phase 5 to quantify the real gap, same as the Whisper-based plan required — this decision doesn't remove that risk, it changes which free option carries it.
+- **Latency:** likely a net improvement over the Groq/AI4Bharat design — both `SpeechRecognition` and `speechSynthesis` avoid a network round-trip to an external inference API, since Chrome handles them directly. Not yet measured for this project; validate in Phase 5 against the ~1s target in §7.
+- **Hosting fit unchanged:** the Playwright/Chromium bot (plus AI4Bharat as TTS fallback) still needs a **persistent VM** (§4, Hosting — Oracle Cloud Always Free tier), not a serverless platform — a live meeting-audio session is a long-running stateful process, architecturally a poor fit for Cloud Run/Render.
 - Follows a standard interview protocol: opening/rapport → resume-specific questions → role-relevant technical/behavioral questions → adaptive follow-ups → closing.
 - Candidate is informed at meeting start (spoken + earlier written notice) that the interviewer is AI and the session is recorded.
 
@@ -150,9 +153,9 @@ Every LLM call in the system (requirement parsing, form generation, resume parsi
 | Realtime updates (response counter, pipeline status) | **Supabase Realtime** — Postgres change subscriptions over WebSocket to the Owner Console |
 | Email | **Brevo** (permanent free tier, 300 emails/day) — sole candidate messaging channel |
 | Video Meeting Creation | Zoom API (primary, free Basic account — 40 min cap on 1:1 calls, comfortably above our 30-min default); Google Meet API (secondary/fallback, free with any Google account) |
-| Meeting Bot (AI joins call) | **Vexa** — open source (Apache 2.0), self-hosted, cross-platform (Zoom/Meet/Teams), no per-minute vendor fee |
-| Speech (STT) | **Groq-hosted Whisper** (`whisper-large-v3-turbo` → `whisper-large-v3` chain, LPU-accelerated, free tier) — not self-hosted; see TRD §3.7 for the correlated-outage trade-off with the LLM Router's Groq fallback |
-| Speech (TTS) | **Self-hosted AI4Bharat Indic Parler-TTS / IndicF5** (open source) — Hindi, Marathi, English |
+| Meeting Bot (AI joins call) | **Custom Playwright/Chromium bot**, self-hosted — joins Zoom/Meet via each platform's web-join URL. Replaces Vexa (§3.7): needed because Chrome's Web Speech APIs only work inside a live browser tab we control, not via a headless audio-stream service. |
+| Speech (STT) | **Chrome's built-in `SpeechRecognition`**, running inside the bot's browser tab — free, no API key. Fallback: **Groq-hosted Whisper** (`whisper-large-v3-turbo` → `whisper-large-v3` chain, kept from the prior design, `app/connectors/speech_to_text.py`). |
+| Speech (TTS) | **Chrome's built-in `speechSynthesis`**, same tab — free, likely lower latency (no network round-trip). **Unvalidated risk:** headless-Linux voice quality/availability for Hindi/Marathi, test in Phase 5. Fallback: **self-hosted AI4Bharat Indic Parler-TTS / IndicF5**. |
 | Backend API | FastAPI (Python) — hosts the orchestrator, calls Supabase via service-role key for privileged operations |
 | Frontend (Owner Console + candidate pages) | React + TypeScript, Tailwind — talks to Supabase directly (Auth, Realtime, Storage) for client-safe operations, and to the FastAPI backend for agent/orchestration actions |
 | Auth | **Supabase Auth** (email/password + OAuth providers) for the single-Owner MVP; candidate-facing pages remain unauthenticated/token-link based |
@@ -175,10 +178,11 @@ Full free-tier terms, usage tracking, and the decision record for every swap abo
 | Google Meet API | Fallback meeting creation | Self-serve, free with any Google account |
 | Gemini API | Primary LLM (free tier) | Self-serve via Google AI Studio; free while billing is disabled on the project |
 | Groq API | Fallback LLM (free tier) | Self-serve, no card required, no expiry |
-| Vexa | Meeting bot join + audio stream | Open source (Apache 2.0), self-hosted — no vendor account/billing at all |
-| Groq (Whisper STT) | STT — `whisper-large-v3-turbo` → `whisper-large-v3` chain | Self-serve, free tier, LPU-accelerated hosted API — not self-hosted; same GROQ_API_KEY as the LLM Router fallback |
-| AI4Bharat Indic Parler-TTS / IndicF5 | TTS (Hindi/Marathi/English) | Self-hosted, free — run on own compute |
-| **Oracle Cloud Always Free tier** | Persistent VM hosting Vexa + AI4Bharat TTS (STT moved off this VM — now Groq-hosted, see above) | Self-serve, permanent free ARM VM (currently 2 OCPU/12GB RAM — Oracle cut this from 4 OCPU/24GB in June 2026 with no announcement; verify current allocation at signup and re-check periodically, see [07-Financial-Subscription-Tracking.md](./07-Financial-Subscription-Tracking.md)) |
+| Playwright (Chromium automation) | Custom meeting-bot join (replaces Vexa) | Open source (Apache License 2.0), self-hosted — no vendor account/billing |
+| Chrome `SpeechRecognition` / `speechSynthesis` | STT/TTS primary, in-browser | Built into Chromium, no API key, no vendor account — see TRD §3.7 for the headless-Linux voice-quality risk to validate |
+| Groq (Whisper STT) | STT fallback — `whisper-large-v3-turbo` → `whisper-large-v3` chain | Self-serve, free tier, LPU-accelerated hosted API; same GROQ_API_KEY as the LLM Router fallback |
+| AI4Bharat Indic Parler-TTS / IndicF5 | TTS fallback (Hindi/Marathi/English) | Self-hosted, free — run on own compute |
+| **Oracle Cloud Always Free tier** | Persistent VM hosting the Playwright/Chromium bot + AI4Bharat TTS fallback | Self-serve, permanent free ARM VM (currently 2 OCPU/12GB RAM — Oracle cut this from 4 OCPU/24GB in June 2026 with no announcement; verify current allocation at signup and re-check periodically, see [07-Financial-Subscription-Tracking.md](./07-Financial-Subscription-Tracking.md)) |
 
 ### 5.1 Supabase Usage Detail
 
@@ -195,7 +199,7 @@ Full free-tier terms, usage tracking, and the decision record for every swap abo
 3. Response Monitor Agent tracks applications → fires event at ≥5 responses; Owner Console reflects the live count via Supabase Realtime.
 4. Notification Agent sends interview invite via Email (candidate's language) with date/time/format/protocol.
 5. Candidate confirms → Meeting Orchestration Agent creates Zoom/Meet instant meeting at scheduled time (≤40 min, free-tier constraint) → sends join link.
-6. Vexa (self-hosted meeting bot) joins → real-time STT (Groq-hosted Whisper) → LLM Router interview logic → real-time TTS (self-hosted AI4Bharat) → live conversation; recording lands in Supabase Storage.
+6. Custom Playwright/Chromium bot joins the meeting → real-time STT (Chrome `SpeechRecognition`, fallback Groq-hosted Whisper) → LLM Router interview logic → real-time TTS (Chrome `speechSynthesis`, fallback self-hosted AI4Bharat) → live conversation; recording lands in Supabase Storage.
 7. Scoring Agent (via LLM Router) generates scorecard from transcript → surfaced on Owner Console (web app).
 8. Owner reviews and confirms final decision → status updated in Supabase → candidate notified via Email.
 
@@ -204,13 +208,14 @@ Full free-tier terms, usage tracking, and the decision record for every swap abo
 ## 7. Performance Requirements
 
 - Requirement-to-form-draft: under 2 minutes of processing time (assuming the LLM Router is not in a paused state).
-- Real-time interview STT→LLM→TTS round trip: target under ~1 second for natural conversational pacing. STT (Groq-hosted Whisper) is LPU-accelerated and not expected to be the bottleneck; TTS (self-hosted AI4Bharat) runs CPU-only on the Oracle Cloud Always Free VM and has not yet been latency-benchmarked (§3.7, §4) — validate against actual pilot hosting before treating the ~1s figure as guaranteed.
+- Real-time interview STT→LLM→TTS round trip: target under ~1 second for natural conversational pacing. Chrome's in-browser `SpeechRecognition`/`speechSynthesis` avoid a network round-trip and are expected to help here, but this is unmeasured for this project — benchmark on the actual Oracle Cloud Always Free VM in Phase 5 (§3.7, §4) before treating the ~1s figure as guaranteed. If either fallback path (Groq STT / AI4Bharat TTS) is engaged, expect the previously-documented 0.5–2s range instead.
 - Email dispatch after threshold trigger: under 5 minutes.
 - Meeting bot join time after meeting creation: under 30 seconds.
 
 ## 8. Failure Handling
 
-- If the meeting bot (Vexa) fails to join: auto-retry twice, then notify Owner and auto-reschedule candidate with an apology message.
+- If the meeting bot (custom Playwright/Chromium) fails to join: auto-retry twice, then notify Owner and auto-reschedule candidate with an apology message.
+- If Chrome's in-browser `SpeechRecognition`/`speechSynthesis` is unavailable or fails mid-interview: fall back to Groq-hosted Whisper (STT) / self-hosted AI4Bharat (TTS) respectively for the remainder of that session, logged for later review.
 - If the LLM Router's free tiers are both exhausted (§3.1a): system pauses all AI-dependent actions, sends the Owner one reminder notification, and resumes automatically at the next quota reset — this is expected behavior under the zero-cost policy, not an error state, but repeated occurrences should prompt a review of whether to accept a small paid tier.
 - If Email delivery fails (e.g., invalid address, Brevo daily cap reached): flag for Owner review; retry once after a delay.
 - If platform posting API call fails: retry with backoff; if persistent, surface to Owner as a manual-action item.

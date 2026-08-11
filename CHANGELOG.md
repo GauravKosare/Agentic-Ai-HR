@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] — 2026-07-20 — Supabase Schema Live, Brevo Configured, Browser-Native Meeting Bot
+
+### Added
+- Applied the full database schema (17 tables, RLS on every owner-traceable table, 2 private storage buckets, Realtime on `applications`) to the live Supabase project via 6 migrations.
+- Configured Brevo: confirmed free-tier account (300 sends/day) and verified sender; created the interview-invitation transactional email template.
+
+### Changed
+- **Meeting bot replaced again:** Vexa → a custom, self-hosted **Playwright/Chromium bot** that joins Zoom/Meet via their browser web-join URLs. Needed because Chrome's Web Speech APIs only run inside a live browser tab, not via a headless audio-stream service like Vexa provided.
+- **STT/TTS primary switched to Chrome's built-in `SpeechRecognition`/`speechSynthesis`**, running in that same browser tab — free, no API key, no metering. The previously-built Groq-hosted Whisper chain and self-hosted AI4Bharat TTS are kept as fallbacks, not discarded.
+- Meeting creation (Zoom/Google Meet APIs) is unchanged — only the join/audio mechanism changed.
+- New documented risks: an unbuilt, unproven OS-level virtual-audio-routing requirement (flagged as the single highest-uncertainty item in the project), and unvalidated Chrome `speechSynthesis` voice quality for Hindi/Marathi on a headless Linux host.
+- Updated TRD, PRD, Workflow, Implementation Plan, README, LICENSE, and the Financial & Subscription Tracking doc (§4b) accordingly.
+
 ## [0.4.0] — 2026-07-20 — Backend Connector Scaffold, Multi-Model Chains, Groq-Hosted STT
 
 ### Added
