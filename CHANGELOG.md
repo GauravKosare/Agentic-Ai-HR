@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1] — 2026-09-08 — Phase 0 Complete
+
+All 5 foundation connectors (Supabase, LLM Router, Speech-to-Text, Email, Zoom) confirmed healthy end-to-end against real credentials via `scripts/check_connectors.py`. Phase 0 of [05-Implementation-Plan.md](docs/05-Implementation-Plan.md) is done; next is Phase 1 (Requirement Parser Agent, Form Builder Agent).
+
 ## [0.6.0] — 2026-09-08 — Email and Zoom Connectors, Supabase Restore
 
 ### Added
