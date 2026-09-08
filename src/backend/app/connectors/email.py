@@ -3,8 +3,14 @@ Email connector (Brevo) — TRD §3.5.
 
 The sole candidate messaging channel (WhatsApp was deliberately excluded — see
 07-Financial-Subscription-Tracking.md). Uses Brevo's transactional email API
-directly (not the SMTP relay) so we can send by template ID with params, matching
-the "Interview Invitation" template created in the Brevo dashboard.
+directly (not the SMTP relay).
+
+Two send functions:
+- `send_template_email` — by Brevo template ID with params (e.g. the Interview
+  Invitation template, TRD §3.5).
+- `send_plain_email` — plain HTML content, no pre-made template. Added for
+  system-generated notices (e.g. the AI-quota-exhausted Owner reminder, TRD
+  §3.1a) that don't warrant creating a dedicated Brevo template for.
 
 Free tier: 300 sends/day, permanent. No fallback provider — if the daily cap is
 hit, TRD §8 says to flag for Owner review and retry once after a delay, not to
@@ -38,6 +44,20 @@ class EmailSendFailed(Exception):
         super().__init__(f"Brevo send failed ({status_code}): {detail}")
 
 
+def _post(payload: dict) -> EmailResult:
+    settings = get_settings()
+    settings.require("brevo_api_key")
+    response = httpx.post(
+        f"{BREVO_API_BASE}/smtp/email",
+        headers={"api-key": settings.brevo_api_key, "content-type": "application/json"},
+        json=payload,
+        timeout=15,
+    )
+    if response.status_code >= 300:
+        raise EmailSendFailed(response.status_code, response.text)
+    return EmailResult(message_id=response.json().get("messageId", ""))
+
+
 def send_template_email(
     to_email: str,
     template_id: int,
@@ -50,25 +70,28 @@ def send_template_email(
     the template's {{params.*}} placeholders; `to_name` fills {{contact.FNAME}}-style
     fields if the template uses them.
     """
-    settings = get_settings()
-    settings.require("brevo_api_key")
-
-    payload = {
+    return _post({
         "to": [{"email": to_email, "name": to_name} if to_name else {"email": to_email}],
         "templateId": template_id,
         "params": params,
-    }
+    })
 
-    response = httpx.post(
-        f"{BREVO_API_BASE}/smtp/email",
-        headers={"api-key": settings.brevo_api_key, "content-type": "application/json"},
-        json=payload,
-        timeout=15,
-    )
-    if response.status_code >= 300:
-        raise EmailSendFailed(response.status_code, response.text)
 
-    return EmailResult(message_id=response.json().get("messageId", ""))
+def send_plain_email(
+    to_email: str,
+    subject: str,
+    html_content: str,
+    to_name: str | None = None,
+) -> EmailResult:
+    """Plain HTML send with an explicit sender — no Brevo template involved."""
+    settings = get_settings()
+    settings.require("brevo_sender_email")
+    return _post({
+        "sender": {"email": settings.brevo_sender_email, "name": settings.brevo_sender_name},
+        "to": [{"email": to_email, "name": to_name} if to_name else {"email": to_email}],
+        "subject": subject,
+        "htmlContent": html_content,
+    })
 
 
 def health_check() -> tuple[bool, str]:

@@ -68,13 +68,30 @@ def _get_access_token() -> str:
     return token
 
 
+MAX_FREE_TIER_DURATION_MINUTES = 40
+
+
 def create_instant_meeting(topic: str, duration_minutes: int = 30) -> ZoomMeeting:
     """
     Creates a Zoom meeting for the Meeting Orchestration Agent (TRD §3.6). type=1
     (instant) starts immediately; for interviews scheduled ahead of time, TRD's
     design calls the meeting-creation step "at the scheduled time" rather than far
     in advance, so instant-meeting semantics fit the intended flow.
+
+    `duration_minutes` is NOT sent to Zoom's API — instant meetings don't take a
+    duration field, they run until ended. It exists purely to enforce the free-tier
+    cap: previously this parameter was accepted and silently discarded, meaning the
+    "don't pass more than 40 without upgrading" warning was a comment nobody could
+    actually violate incorrectly and find out. Raising here makes it a real guard.
     """
+    if duration_minutes > MAX_FREE_TIER_DURATION_MINUTES:
+        raise ValueError(
+            f"duration_minutes={duration_minutes} exceeds the {MAX_FREE_TIER_DURATION_MINUTES}-minute cap "
+            "on a Zoom free Basic account (TRD §3.6). Shorten it, or confirm the Zoom account has been "
+            "upgraded before removing this check — Zoom itself will cut the call at 40 minutes regardless "
+            "of what we pass here, so this just fails fast instead of surprising a candidate mid-interview."
+        )
+
     token = _get_access_token()
     response = httpx.post(
         f"{ZOOM_API_BASE}/users/me/meetings",
