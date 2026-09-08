@@ -82,6 +82,22 @@ class Settings(BaseSettings):
     def groq_stt_chain(self) -> list[str]:
         return _split(self.groq_models_stt)
 
+    # --- Email (TRD §3.5) ---
+    # Brevo — sole candidate messaging channel (WhatsApp deliberately excluded,
+    # see 07-Financial-Subscription-Tracking.md). Permanent free tier, 300/day.
+    brevo_api_key: str = Field(default="", alias="BREVO_API_KEY")
+    brevo_sender_email: str = Field(default="", alias="BREVO_SENDER_EMAIL")
+    brevo_sender_name: str = Field(default="AI Recruiter Agent", alias="BREVO_SENDER_NAME")
+
+    # --- Zoom (TRD §3.6) ---
+    # Server-to-Server OAuth app (not the old JWT type, which Zoom retired) —
+    # marketplace.zoom.us -> Develop -> Build App -> Server-to-Server OAuth.
+    # Free Basic account: unlimited 1:1 meetings, capped at 40 min/session — our
+    # default interview_time_limit_minutes is 30, comfortably under that.
+    zoom_account_id: str = Field(default="", alias="ZOOM_ACCOUNT_ID")
+    zoom_client_id: str = Field(default="", alias="ZOOM_CLIENT_ID")
+    zoom_client_secret: str = Field(default="", alias="ZOOM_CLIENT_SECRET")
+
     @property
     def gemini_reasoning_chain(self) -> list[str]:
         return _split(self.gemini_models_reasoning)

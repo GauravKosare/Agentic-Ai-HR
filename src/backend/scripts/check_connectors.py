@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.connectors import llm_router, speech_to_text, supabase_client  # noqa: E402
+from app.connectors import email, llm_router, speech_to_text, supabase_client, zoom  # noqa: E402
 
 
 def main() -> int:
@@ -20,6 +20,8 @@ def main() -> int:
         ("Supabase", supabase_client.health_check),
         ("LLM Router (Gemini -> Groq)", llm_router.health_check),
         ("Speech-to-Text (Groq Whisper)", speech_to_text.health_check),
+        ("Email (Brevo)", email.health_check),
+        ("Zoom", zoom.health_check),
     ]
 
     all_ok = True

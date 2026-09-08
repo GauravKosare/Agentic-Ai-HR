@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] — 2026-09-08 — Email and Zoom Connectors, Supabase Restore
+
+### Added
+- `app/connectors/email.py` — Brevo transactional email (TRD §3.5), confirmed working against a real key.
+- `app/connectors/zoom.py` — Zoom Server-to-Server OAuth (TRD §3.6): token fetch/cache, instant meeting creation.
+- Tests for the Zoom token-cache freshness logic.
+
+### Fixed
+- The Supabase project had auto-paused after being idle since July 19 (Supabase free tier pauses after 1 week inactive — exactly the risk documented in the Financial doc) and was surfaced as a DNS resolution failure, not an obvious "paused" message. Restored via the Supabase MCP connector. Documented the symptom and fix in `src/backend/README.md` so it's recognizable next time.
+
 ## [0.5.0] — 2026-07-20 — Supabase Schema Live, Brevo Configured, Browser-Native Meeting Bot
 
 ### Added
