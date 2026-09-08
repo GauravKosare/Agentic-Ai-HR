@@ -15,15 +15,12 @@ point (HTTP handler, CLI, batch job).
 
 from __future__ import annotations
 
-import json
-import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
+from app.agents._shared import JSONExtractionError, extract_json
 from app.connectors.llm_router import Task, generate
-
-_JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
 
 class RequisitionDraft(BaseModel):
@@ -140,20 +137,6 @@ def _build_prompt(raw_brief_text: str) -> str:
     return _SCHEMA_INSTRUCTIONS.replace("{brief}", raw_brief_text.strip())
 
 
-def _extract_json(model_text: str) -> dict:
-    """
-    Strips markdown code fences if the model added them anyway (common even
-    with an explicit "no fences" instruction) before parsing. A JSON decode
-    failure here means the model didn't follow the schema at all — that's a
-    RequirementParsingError, not something to guess around.
-    """
-    cleaned = _JSON_FENCE.sub("", model_text.strip()).strip()
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        raise RequirementParsingError(f"model response was not valid JSON: {exc}", model_text) from exc
-
-
 def parse_requirement(raw_brief_text: str) -> RequisitionDraft:
     """
     The single entry point. Raises RequirementParsingError on a genuine
@@ -166,7 +149,11 @@ def parse_requirement(raw_brief_text: str) -> RequisitionDraft:
         raise RequirementParsingError("empty brief", raw_brief_text)
 
     result = generate(_build_prompt(raw_brief_text), task=Task.REQUIREMENT_PARSING)
-    payload = _extract_json(result.text)
+
+    try:
+        payload = extract_json(result.text)
+    except JSONExtractionError as exc:
+        raise RequirementParsingError(exc.detail, exc.raw_response) from exc
 
     try:
         return RequisitionDraft.model_validate(payload)

@@ -12,7 +12,6 @@ import pytest
 from app.agents.requirement_parser import (
     RequirementParsingError,
     RequisitionDraft,
-    _extract_json,
     parse_requirement,
 )
 from app.connectors.llm_router import LLMResult, Task
@@ -34,18 +33,11 @@ FULL_BRIEF_PAYLOAD = {
 }
 
 
-def test_extract_json_parses_clean_json():
-    assert _extract_json('{"a": 1}') == {"a": 1}
-
-
-def test_extract_json_strips_markdown_fences():
-    fenced = '```json\n{"a": 1}\n```'
-    assert _extract_json(fenced) == {"a": 1}
-
-
-def test_extract_json_raises_on_invalid_json():
-    with pytest.raises(RequirementParsingError):
-        _extract_json("not json at all")
+def test_parse_requirement_wraps_invalid_json_as_requirement_parsing_error():
+    bad_result = LLMResult(text="not json at all", provider="gemini", model="test-model", task=Task.REQUIREMENT_PARSING)
+    with patch("app.agents.requirement_parser.generate", return_value=bad_result):
+        with pytest.raises(RequirementParsingError):
+            parse_requirement("some brief")
 
 
 def test_parse_requirement_returns_full_draft_when_brief_is_clear():
