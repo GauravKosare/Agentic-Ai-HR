@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Council Report — Authentication Approach</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem 1rem 4rem;
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1c1917; background: #fafaf9;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  .sub { color: #78716c; font-size: .875rem; margin-bottom: 2rem; }
+  .q {
+    background: #fff; border: 1px solid #e7e5e4; border-radius: 12px;
+    padding: 1rem 1.25rem; margin-bottom: 2rem; font-size: .95rem;
+  }
+  .q strong { display: block; margin-bottom: .35rem; }
+  .verdict {
+    background: #fff; border: 1px solid #e7e5e4; border-left: 4px solid #059669;
+    border-radius: 12px; padding: 1.5rem 1.5rem; margin-bottom: 2rem;
+  }
+  .verdict h2 { margin: 1.4rem 0 .5rem; font-size: 1.05rem; }
+  .verdict h2:first-child { margin-top: 0; }
+  .verdict ul { margin: .4rem 0; padding-left: 1.2rem; }
+  .verdict li { margin: .3rem 0; }
+  .pill {
+    display: inline-block; background: #ecfdf5; color: #065f46;
+    border-radius: 999px; padding: .15rem .6rem; font-size: .8rem; font-weight: 600;
+  }
+  .first {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+    padding: 1rem 1.25rem; margin: 1rem 0 2rem;
+  }
+  .first strong { color: #92400e; }
+  .align {
+    background: #fff; border: 1px solid #e7e5e4; border-radius: 12px;
+    padding: 1.25rem 1.5rem; margin-bottom: 2rem;
+  }
+  .align h3 { margin: 0 0 .75rem; font-size: .95rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+  th, td { text-align: left; padding: .5rem .5rem; border-bottom: 1px solid #f0eeec; vertical-align: top; }
+  th { color: #78716c; font-weight: 600; }
+  .rec { color: #065f46; font-weight: 600; }
+  .dis { color: #b91c1c; }
+  .mid { color: #92400e; }
+  details {
+    background: #fff; border: 1px solid #e7e5e4; border-radius: 10px;
+    padding: .5rem 1rem; margin-bottom: .6rem;
+  }
+  details summary {
+    cursor: pointer; font-weight: 600; font-size: .9rem; padding: .35rem 0;
+    list-style: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before { content: "▸ "; color: #a8a29e; }
+  details[open] summary::before { content: "▾ "; }
+  details .body { font-size: .9rem; color: #292524; padding: .5rem 0 .75rem; white-space: pre-wrap; }
+  .section-label { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: #a8a29e; margin: 2.25rem 0 .75rem; }
+  footer { margin-top: 3rem; color: #a8a29e; font-size: .8rem; border-top: 1px solid #e7e5e4; padding-top: 1rem; }
+  code { background: #f5f5f4; padding: .1rem .3rem; border-radius: 4px; font-size: .85em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Council Report — Authentication Approach</h1>
+  <div class="sub">AI Recruiter Agent · counciled 2026-09-10 · 5 advisors + 5 peer reviews + chairman</div>
+
+  <div class="q">
+    <strong>The question</strong>
+    Which authentication approach should the AI Recruiter Agent adopt for its Owner (recruiter) accounts?
+    Solo-built React+Vite SPA / FastAPI / Supabase (Postgres + RLS). Backend currently uses the Supabase
+    service-role key (bypasses RLS), no per-Owner scoping yet. Single-Owner MVP; schema already supports
+    multi-recruiter. Hard constraint: genuine zero recurring cost. Handles candidate PII under EU AI Act
+    (high-risk) + India DPDP. Options weighed: Supabase Auth, roll-your-own FastAPI JWT, Better Auth, Logto,
+    Zitadel, SuperTokens, Clerk, WorkOS AuthKit, Auth0/Firebase, passkeys.
+  </div>
+
+  <div class="verdict">
+    <span class="pill">COUNCIL VERDICT</span>
+
+    <h2>Recommendation: Supabase Auth — as the minimal option, not the maximal one</h2>
+    <p>The <code>owners</code> table, the <code>auth_user_id</code> FK, and the RLS policies are
+    <em>already written for it</em>, so the marginal cost over any bespoke scheme is near zero. Every
+    alternative is strictly worse on at least one of cost (self-hosted = a second stateful service to
+    operate), risk (roll-your-own = a PII-breach surface for a solo builder), lock-in (Clerk / Auth0 /
+    Firebase), or fit (their JWTs don't match the <code>auth.uid()</code> RLS policies you already have).</p>
+    <p>But the council's real finding: <strong>the auth vendor was never the hard part.</strong> The hard
+    part is the recruiter-account security posture the regulations demand, which no vendor gives you by
+    default. So the decision is Supabase Auth <em>plus a defined hardening checklist</em>:</p>
+    <ul>
+      <li>Email/password login → <strong>TOTP MFA required</strong> on the Owner account (free on Supabase Auth)</li>
+      <li>Backup codes stored + a second <strong>break-glass Owner</strong> account (solo account recovery has no path otherwise)</li>
+      <li>Turn RLS <strong>back on</strong> as defense-in-depth <em>beneath</em> the app-code <code>owner_id</code> checks — not instead of them</li>
+      <li>Owner auth events written to the existing <code>audit_log</code> (DPDP / AI Act accountability)</li>
+      <li>Point Supabase custom SMTP at the <strong>existing Brevo</strong> credentials — the built-in SMTP is rate-limited and not production-grade</li>
+      <li>A <strong>keep-alive cron</strong> so the free-tier project can't auto-pause login out from under you (~7-day idle pause — already been bitten by this)</li>
+      <li>Short-lived JWTs with refresh, revocable on device loss</li>
+    </ul>
+    <p><strong>Skip:</strong> organizations, SSO/SAML, roles, team invites — genuinely premature for one
+    user, and re-addable for free when a paying multi-seat customer actually appears.</p>
+
+    <div class="first">
+      <strong>The one thing to do first:</strong> In the Supabase dashboard — Authentication → point
+      custom SMTP at your existing Brevo credentials, then enable the Email provider and require MFA.
+      That 15-minute step is what turns "Supabase Auth" from a default into a compliance-defensible one,
+      and it's the piece every advisor skipped. The FastAPI JWKS dependency and React login form come
+      right after — but they're worthless guarding a mailbox that can't send a password reset, or an
+      account with single-factor login to regulated PII.
+    </div>
+  </div>
+
+  <div class="align">
+    <h3>Where the advisors landed</h3>
+    <table>
+      <tr><th>Advisor</th><th>Position</th></tr>
+      <tr><td>First Principles</td><td class="rec">Supabase Auth — "why would you add anything? The <code>owner_id</code> problem is already solved in your data model"</td></tr>
+      <tr><td>The Outsider</td><td class="rec">Supabase Auth — roll-your-own is "alarming," self-hosting is "a second job," lock-in fear is overweighted</td></tr>
+      <tr><td>The Executor</td><td class="rec">Supabase Auth — zero new deployment units, ships this week; everything else is multi-week or a service to babysit</td></tr>
+      <tr><td>The Expansionist</td><td class="mid">Supabase Auth — but for enterprise-roadmap reasons that <em>peer review found to be factually wrong</em> (SAML SSO is a paid add-on, not free)</td></tr>
+      <tr><td>The Contrarian</td><td class="dis">Dissent: one user = don't adopt a real auth system at all; a single hashed credential + cookie. <em>Peer review rejected this</em> — trades near-zero marginal cost for a guaranteed migration later.</td></tr>
+    </table>
+  </div>
+
+  <div class="verdict">
+    <h2>Where the council clashes</h2>
+    <p><strong>The Contrarian vs. everyone else</strong> on whether to adopt real auth at all now. Contrarian:
+    one user, so multi-tenant auth is speculative complexity. The rest: the machinery is for the regulator
+    and future-you, and real Supabase Auth costs ~nothing more than a bespoke cookie scheme <em>because the
+    schema is already built for it</em>. Chairman sides with the majority — the Contrarian is right you
+    shouldn't build multi-tenant <em>machinery</em>, wrong that this argues against Supabase Auth, which
+    <em>is</em> the minimal option here.</p>
+    <p><strong>Does "RLS is currently bypassed" count against Supabase Auth?</strong> Contrarian says yes.
+    Reviewer 5 reframes it correctly: it's an argument to turn RLS back <em>on</em> as defense-in-depth,
+    which makes Supabase Auth more valuable, not less.</p>
+
+    <h2>Blind spots the peer review caught</h2>
+    <ul>
+      <li><strong>The Expansionist's upside case rests on a factual error</strong> — Supabase's free tier does not include SAML SSO. "Enterprise roadmap already built for free" is wrong.</li>
+      <li><strong>Free-tier auto-pause (~7 days idle) takes auth down with the DB</strong> — no advisor proposed a mitigation.</li>
+      <li><strong>Solo-Owner account recovery is unaddressed</strong> — one human, one credential, no second admin, regulated PII.</li>
+      <li><strong>MFA is close to a compliance obligation here</strong>, not a nice-to-have (EU AI Act security-of-processing + DPDP).</li>
+      <li><strong>Audit logging of Owner logins / PII access</strong> — a DPDP + AI Act accountability expectation.</li>
+      <li><strong>Production email deliverability</strong> — Supabase's built-in SMTP is rate-limited; needs Brevo regardless.</li>
+      <li><strong>Token/session revocation + JWT refresh</strong> — not automatic.</li>
+      <li><strong>The service-role key stays in the backend regardless of auth choice</strong> — that residual risk needs its own plan.</li>
+    </ul>
+  </div>
+
+  <div class="section-label">Full advisor responses</div>
+
+  <details>
+    <summary>The Contrarian</summary>
+    <div class="body">Everyone will converge on Supabase Auth because it's the same vendor and RLS "just works." Here's the fatal flaw: RLS does nothing for you. Your backend uses the service-role key and bypasses RLS entirely; every endpoint filters by owner_id in Python. So Supabase Auth's single biggest advertised advantage — native JWT-to-RLS integration — is worth exactly zero in your architecture.
+
+Strip that away and Supabase Auth is just a hosted auth service from a company whose pause-happy free-tier behavior you've already been burned by. If Supabase pauses your project, your auth dies with your DB. Single point of failure, single vendor, already bitten.
+
+The deeper problem nobody's questioning: you're solving multi-tenant auth for a single-Owner MVP. You have one user. It's you. The schema-for-multi-recruiter-later thing is speculative complexity. The zero-cost, zero-burden, zero-lock-in answer for one recruiter is a single env-var credential or one hashed password in config, plus a session cookie. Argon2 + one row. No vendor, no JWKS, no Node sidecar, no OIDC. When you actually sign recruiter #2 — if ever — you'll know your real requirements and can adopt Logto or Zitadel then, funded by customers.
+
+Rolling your own "full" auth is the trap: password reset, email verification, rate limiting, revocation — that's where solo builders leak PII. Build the minimum lock for a door only you walk through.
+
+The compliance risk isn't your auth library. It's the service-role key in your app tier and app-code owner_id filters you might forget.</div>
+  </details>
+
+  <details>
+    <summary>The First Principles Thinker</summary>
+    <div class="body">You're asking "which vendor" when the real question is: what is authentication protecting, and from whom, at a stage with one user?
+
+Authentication here does exactly two jobs right now: (1) keep the internet out of a recruiter's dashboard holding candidate PII; (2) stamp a verified owner_id onto every request so your app-code filtering has something trustworthy to filter by. There is no user management, team invites, role hierarchy, or password-reset support burden — the userbase is you. Every option selling "great DX for onboarding users," "1M MAU free," "org management" solves a problem you don't have and prices in risk you can't afford.
+
+The actual decision axis: what produces a trustworthy owner_id on a FastAPI request with zero new infrastructure and zero new attack surface? That kills half the list. Better Auth, Logto, Zitadel, SuperTokens self-hosted — a second runtime you patch and monitor; not zero-cost, unpaid on-call. Clerk, Auth0, WorkOS, Firebase — proprietary identity dependency for a compliance-sensitive product, to save an afternoon.
+
+You already run Supabase. It already issues JWTs. Your schema already has auth_user_id wired to auth.users. The owner_id problem is already solved in your data model — you just haven't turned the key.
+
+The honest question isn't "which auth" — it's "why would I add anything?" The multi-recruiter future is a red herring: whatever issues verifiable JWTs for one Owner issues them for fifty.</div>
+  </details>
+
+  <details>
+    <summary>The Expansionist</summary>
+    <div class="body">Auth is not plumbing here. It's the schema of your future org chart, and picking it well converts "solo MVP" into "multi-tenant SaaS with an enterprise motion" for near-zero marginal work.
+
+The underrated move: Supabase Auth as the identity spine, with RLS as the tenancy boundary. RLS policies keyed on auth.jwt() ->> 'owner_id' give you database-enforced tenant isolation for free — the single most expensive thing to retrofit later, and the exact control an EU AI Act auditor or DPDP data-processing agreement wants to see. You get a compliance artifact ("PII isolation enforced at the storage layer, not just app code") that becomes a sales asset with your first agency buyer.
+
+Then it compounds. Supabase Auth ships organizations, SSO/SAML, MFA in the same free tier — your entire agency-tier roadmap already built. One recruiter becomes a 12-seat firm becomes an enterprise account demanding Okta SSO, and you never swap auth vendors. Passkeys layer on top as a security differentiator.
+
+The adjacency: once Owners have real JWTs, your tokenized candidate links become scoped, signed, revocable artifacts from the same system, and partner/ATS integrations get OAuth-client credentials from infrastructure you already run. A marketplace surface.
+
+Bet on the choice that makes the 50-person version boring to build: Supabase Auth. Rolling your own throws away every upside path to save a week you'll spend on RLS policies anyway.
+
+[Peer review note: the free-tier SSO/SAML/orgs claim is factually wrong — SAML is a paid Supabase add-on. This undercuts the compounding-upside argument.]</div>
+  </details>
+
+  <details>
+    <summary>The Outsider</summary>
+    <div class="body">The word "free" is doing a lot of hiding here. None of these options charge money; all of them charge attention. Self-hosting Logto, Zitadel, or SuperTokens means you now run an internet-facing service that stores password hashes for a regulated product, and you patch it forever. That's not $0 — that's a second job. The only genuinely "free" options are ones where someone else runs the server: Supabase Auth or a hosted tier.
+
+"Roll your own auth" for a product under EU and India hiring-AI regulation, handling applicant personal data, built by one person with no security team: alarming. Full stop. If there's a breach, "I hand-rolled the token logic" is the sentence in the incident report that ends the company. Cross it off.
+
+The mismatch you're asking about is real but backwards. It looks like heavy machinery for one user — but the machinery isn't for the user, it's for the regulator and future-you. That's justified. What's not justified is evaluating ten options. You have a Supabase database with RLS already wired to expect Supabase Auth tokens. Option 1 is the only one that makes your existing code smaller (drop the service-role key and the manual "filter by user id in every endpoint," itself a data-leak risk every time you forget).
+
+Lock-in fear is overweighted. Auth data is a table of emails and password hashes; it's the most portable thing in your stack. Migrating later is a weekend, not a rewrite.
+
+Pick Supabase Auth. Add passkeys later. Spend the saved weeks on regulatory documentation — the actual hard part nobody on this list solves.</div>
+  </details>
+
+  <details>
+    <summary>The Executor</summary>
+    <div class="body">Ship this week: Option 1 (Supabase Auth). Everything else is multi-week or adds deployment units you'll babysit.
+
+Deployment-unit count:
+- Supabase Auth: zero new units. Already running inside the Supabase project you deploy. No new service, DB, or backup story.
+- Roll-your-own: zero units but ~2 weeks of code — password reset tokens, email verification, rate limiting, revocation, lockout, Brevo templates, security tests. You'll get one subtly wrong.
+- Better Auth / SuperTokens self-host / Logto / Zitadel: +1 service minimum, and 3 of 4 also +1 Postgres database — stateful, needs backups, migrations, free-tier keep-alive cron. On Render free tier it cold-starts and sleeps. "Self-hosted open source auth" is really "operate a second stateful system."
+- Clerk / WorkOS: zero units, but your RLS policies reference auth.uid(). Using them means minting a Supabase-compatible JWT or abandoning RLS. Extra glue, plus a vendor you'd later pay.
+
+Supabase Auth is the only option where the JWT drops straight into the auth.uid() policies you already wrote.
+
+Monday: Supabase dashboard → Auth → Providers → enable Email. Add @supabase/supabase-js to React, login form calling signInWithPassword. In FastAPI, one dependency that fetches Supabase's JWKS, verifies the bearer token, extracts sub, looks up owners.auth_user_id, returns owner_id. Create your Owner row by hand. Flip the backend from service-role key to per-request JWT. Done in a day or two.</div>
+  </details>
+
+  <details>
+    <summary>Peer review highlights</summary>
+    <div class="body">Strongest response: The Executor (4 of 5 reviewers) — the only one that both reframes the decision correctly (deployment-unit count / operational burden is the deciding axis) and gives a concrete implementation path. The Outsider was the other pick (1 of 5).
+
+Biggest blind spot: The Expansionist (4 of 5 reviewers) — its entire upside thesis rests on RLS-enforced isolation being "already true" (the backend bypasses RLS today) and on SSO/SAML/orgs being in the free tier (SAML is a paid add-on). One reviewer instead flagged the Contrarian's "one hashed password" as the biggest miss — it ignores that adopting real Supabase Auth is near-free given the existing schema.
+
+What all five advisors missed (consensus across reviewers): free-tier auto-pause taking auth down with the DB; solo-Owner account recovery; MFA as a compliance obligation for high-risk PII; audit-logging of Owner access; production email deliverability (Supabase's built-in SMTP is rate-limited); token/session revocation and JWT refresh; and that the service-role key remains a residual risk in the backend regardless of auth choice.</div>
+  </details>
+
+  <footer>
+    Counciled 2026-09-10 · Full transcript: <code>council-transcript-20260910-200541.md</code><br />
+    5 advisors (Contrarian, First Principles, Expansionist, Outsider, Executor) · 5 anonymized peer reviews · chairman synthesis
+  </footer>
+
+</div>
+</body>
+</html>
