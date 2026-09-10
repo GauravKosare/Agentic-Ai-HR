@@ -23,6 +23,7 @@ All product, technical, and design specifications live in [`/docs`](./docs):
 
 | Document | Description |
 |---|---|
+| [00 — Project Overview](./docs/00-Project-Overview.md) | Plain-language: the problem, the solution, how it works, tech stack, current status |
 | [01 — Product Requirements Document](./docs/01-PRD.md) | Vision, goals, scope, functional & non-functional requirements, compliance posture, risks |
 | [02 — Technical Requirements Document](./docs/02-TRD.md) | System architecture, agent breakdown, verified tech stack, integration access status |
 | [03 — Workflow](./docs/03-Workflow.md) | End-to-end process flow (with diagram), stage-by-stage breakdown, exception handling |
