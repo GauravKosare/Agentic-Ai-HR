@@ -5,11 +5,18 @@ React + TypeScript + Vite + Tailwind (v4). The recruiter-facing web app
 
 ## What's here so far (Phase 1)
 
+- **Auth** (`auth.tsx`, `components/Login.tsx`) — Supabase Auth, email/password **+ mandatory TOTP MFA**. The console is only reachable at Authenticator Assurance Level 2; a password-only session lands on the MFA step. Needs `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` (see `.env.example`).
 - **Requirement Intake** (UI-UX §4.1) — plain-language brief → `POST /requisitions/parse` → editable structured summary.
 - **Form Preview & Approval** (§4.2) — editable requisition → `POST /forms/build` → read-only preview of the candidate form exactly as it'll appear.
 - **AI status chip** (§4.3a) — polls `GET /system/ai-status`; shows when the LLM Router is paused on free-tier quota (TRD §3.1a) and when it resumes.
 
-**Not yet:** auth (the backend has none either — same "build the flows first" order), per-field inline form editing, and anything past "Approve" (distribution is Phase 2).
+**Not yet:** per-field inline form editing, and anything past "Approve" (distribution is Phase 2).
+
+## Tests
+
+```bash
+npm run test    # vitest — pure logic (auth state machine, api client)
+```
 
 ## Run it
 

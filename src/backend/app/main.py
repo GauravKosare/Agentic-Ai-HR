@@ -1,15 +1,15 @@
 """
 FastAPI entry point.
 
-Two agent endpoints so far: POST /requisitions/parse (Requirement Parser) and
-POST /forms/build (Form Builder). Both follow the same shape, factored into
-`_run_agent_call` below rather than repeated per endpoint: check
-quota_guard.is_ai_paused() first to short-circuit a call that's certain to
-fail, catch AIQuotaExhausted and the agent's own domain-specific parsing
-error distinctly, return typed error bodies rather than a raw 500. More
-endpoints get added agent-by-agent as Phase 1 continues
-(05-Implementation-Plan.md); the first two proved the pattern, this is where
-it stopped being "the endpoint's own logic" and became shared plumbing.
+Auth: every Owner-facing endpoint depends on `get_current_owner` (app/core/auth.py)
+— a verified Supabase JWT at `aal2` (password + TOTP MFA), resolved to an
+`owners` row. `/health`, `/system/ai-status`, and CORS preflight are the only
+unauthenticated routes. Candidate-facing endpoints (tokenized links, no login)
+come later and will have their own token scheme, not this dependency.
+
+Agent endpoints (POST /requisitions/parse, POST /forms/build) share `_run_agent_call`:
+check quota_guard.is_ai_paused() first, catch AIQuotaExhausted and the agent's
+own domain error distinctly, return typed error bodies not a raw 500.
 
 Run with (from src/backend, venv activated):
     uvicorn app.main:app --reload
@@ -17,16 +17,19 @@ Run with (from src/backend, venv activated):
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import Callable, TypeVar
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.agents.form_builder import FormBuildError, FormSchema, build_form
 from app.agents.requirement_parser import RequirementParsingError, RequisitionDraft, parse_requirement
 from app.connectors.llm_router import AIQuotaExhausted
+from app.connectors.supabase_client import get_service_client
 from app.core import quota_guard
+from app.core.auth import Owner, get_current_owner
 from app.core.config import get_settings
 
 app = FastAPI(title="AI Recruiter Agent Backend")
@@ -48,22 +51,37 @@ def health() -> dict:
 
 @app.get("/system/ai-status")
 def ai_status() -> dict:
-    """Powers the Owner Console's AI status chip (UI-UX §4.3a). Reads the same
-    derived pause state the agent endpoints check — no side effects, safe to
-    poll."""
+    """Powers the Owner Console's AI status chip (UI-UX §4.3a). No side effects, safe to poll."""
     paused, resume_at = quota_guard.is_ai_paused()
     return {"paused": paused, "resume_at": resume_at.isoformat() if resume_at else None}
 
 
+@app.post("/auth/session", response_model=Owner)
+def announce_session(owner: Owner = Depends(get_current_owner)) -> Owner:
+    """
+    The frontend calls this once immediately after a successful login reaches
+    aal2. It's the point where the backend learns a login happened (login itself
+    is Supabase-side), so it writes the one `owner_login` audit row here rather
+    than on every subsequent request. Returns the Owner profile for the console
+    to display.
+    """
+    get_service_client().table("audit_log").insert({
+        "entity_type": "owner",
+        "entity_id": owner.owner_id,
+        "action": "owner_login",
+        "actor_type": "owner",
+        "actor_id": owner.owner_id,
+        "details": {"email": owner.email, "at": dt.datetime.now(dt.timezone.utc).isoformat()},
+    }).execute()
+    return owner
+
+
 def _run_agent_call(fn: Callable[[], T], domain_error_type: type[Exception], domain_error_label: str) -> T:
     """
-    Shared shape for every agent endpoint below. `domain_error_type` is each
-    agent's own "the model's output couldn't be turned into a valid result"
-    exception (e.g. RequirementParsingError, FormBuildError) — always mapped
-    to 422, since it means the request itself was fine but the AI-generated
-    content wasn't usable. AIQuotaExhausted is handled once, here, the same
-    way for every agent: log+notify via quota_guard, then 503 — no endpoint
-    needs to know that plumbing exists.
+    Shared shape for every agent endpoint. `domain_error_type` is each agent's
+    own "the model's output couldn't be turned into a valid result" exception —
+    always mapped to 422. AIQuotaExhausted is handled once, here: log+notify via
+    quota_guard, then 503.
     """
     paused, resume_at = quota_guard.is_ai_paused()
     if paused:
@@ -89,7 +107,13 @@ class ParseRequirementBody(BaseModel):
 
 
 @app.post("/requisitions/parse", response_model=RequisitionDraft)
-def parse_requisition(body: ParseRequirementBody) -> RequisitionDraft:
+def parse_requisition(
+    body: ParseRequirementBody,
+    owner: Owner = Depends(get_current_owner),
+) -> RequisitionDraft:
+    # `owner` is required for authorization; the parsed draft isn't persisted
+    # yet (no requisitions-table write exists — that step attaches owner.owner_id
+    # when it's built).
     return _run_agent_call(
         lambda: parse_requirement(body.raw_brief_text),
         domain_error_type=RequirementParsingError,
@@ -98,11 +122,14 @@ def parse_requisition(body: ParseRequirementBody) -> RequisitionDraft:
 
 
 @app.post("/forms/build", response_model=FormSchema)
-def build_form_endpoint(requisition: RequisitionDraft) -> FormSchema:
+def build_form_endpoint(
+    requisition: RequisitionDraft,
+    owner: Owner = Depends(get_current_owner),
+) -> FormSchema:
     """
     Takes a RequisitionDraft body, not raw text — TRD §3.2's flow is
     requisition -> form as its own step, after the Owner has reviewed/edited
-    whatever /requisitions/parse produced, not a re-parse of the original brief.
+    whatever /requisitions/parse produced.
     """
     return _run_agent_call(
         lambda: build_form(requisition),

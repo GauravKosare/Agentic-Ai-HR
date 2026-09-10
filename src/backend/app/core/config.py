@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     supabase_url: str = Field(default="", alias="SUPABASE_URL")
     supabase_secret_key: str = Field(default="", alias="SUPABASE_SECRET_KEY")
     supabase_publishable_key: str = Field(default="", alias="SUPABASE_PUBLISHABLE_KEY")
+    # Optional. Set only if the project still signs JWTs with a legacy shared
+    # HS256 secret (Project Settings -> API -> JWT Settings). Modern projects use
+    # asymmetric signing keys with a JWKS endpoint and don't need this — the auth
+    # dependency (app/core/auth.py) uses JWKS by default and only falls back to
+    # HS256 when this is present.
+    supabase_jwt_secret: str = Field(default="", alias="SUPABASE_JWT_SECRET")
 
     # --- LLM Router (TRD §3.1a) ---
     # Each *_MODELS_* value is a comma-separated CHAIN, tried in order within that

@@ -47,6 +47,14 @@ export interface AiStatus {
   resume_at: string | null
 }
 
+// app/core/auth.py :: Owner (returned by POST /auth/session)
+export interface Owner {
+  owner_id: string
+  auth_user_id: string
+  email: string
+  full_name: string | null
+}
+
 // The shape the backend puts in an HTTPException detail for a 503 ai_paused or
 // a 422 domain error (main.py :: _run_agent_call).
 export interface ApiErrorDetail {
