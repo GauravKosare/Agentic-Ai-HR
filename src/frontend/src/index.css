@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+/* Inter for Latin, Noto Sans Devanagari for Hindi/Marathi — UI-UX §6 requires
+   the type to render Devanagari cleanly wherever candidate-facing text appears.
+   Both @import lines must come before any rule below. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600&display=swap');
+
+:root {
+  font-family: 'Inter', 'Noto Sans Devanagari', system-ui, sans-serif;
+}
+
+body {
+  @apply bg-stone-50 text-stone-800 antialiased;
+}

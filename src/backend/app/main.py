@@ -20,14 +20,23 @@ from __future__ import annotations
 from typing import Callable, TypeVar
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.agents.form_builder import FormBuildError, FormSchema, build_form
 from app.agents.requirement_parser import RequirementParsingError, RequisitionDraft, parse_requirement
 from app.connectors.llm_router import AIQuotaExhausted
 from app.core import quota_guard
+from app.core.config import get_settings
 
 app = FastAPI(title="AI Recruiter Agent Backend")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().frontend_origin_list,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 T = TypeVar("T")
 
@@ -35,6 +44,15 @@ T = TypeVar("T")
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/system/ai-status")
+def ai_status() -> dict:
+    """Powers the Owner Console's AI status chip (UI-UX §4.3a). Reads the same
+    derived pause state the agent endpoints check — no side effects, safe to
+    poll."""
+    paused, resume_at = quota_guard.is_ai_paused()
+    return {"paused": paused, "resume_at": resume_at.isoformat() if resume_at else None}
 
 
 def _run_agent_call(fn: Callable[[], T], domain_error_type: type[Exception], domain_error_label: str) -> T:

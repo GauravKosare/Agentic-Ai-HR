@@ -25,6 +25,23 @@ def test_health():
     assert response.json() == {"status": "ok"}
 
 
+def test_ai_status_reports_not_paused():
+    with patch("app.main.quota_guard.is_ai_paused", return_value=(False, None)):
+        response = client.get("/system/ai-status")
+    assert response.status_code == 200
+    assert response.json() == {"paused": False, "resume_at": None}
+
+
+def test_ai_status_reports_paused_with_resume_time():
+    resume_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)
+    with patch("app.main.quota_guard.is_ai_paused", return_value=(True, resume_at)):
+        response = client.get("/system/ai-status")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["paused"] is True
+    assert body["resume_at"] == resume_at.isoformat()
+
+
 def test_parse_requisition_success():
     draft = RequisitionDraft(role_title="Backend Intern", quantity=2, work_mode="remote")
     with (

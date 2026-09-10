@@ -98,6 +98,19 @@ class Settings(BaseSettings):
     zoom_client_id: str = Field(default="", alias="ZOOM_CLIENT_ID")
     zoom_client_secret: str = Field(default="", alias="ZOOM_CLIENT_SECRET")
 
+    # --- Frontend / CORS ---
+    # Comma-separated list of origins allowed to call this API from a browser.
+    # In dev, the Vite dev server proxies /api to this backend so requests are
+    # same-origin and CORS isn't exercised — this matters once the frontend is
+    # deployed separately (Vercel/Netlify) from the backend (Cloud Run/Render).
+    frontend_origins: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173", alias="FRONTEND_ORIGINS"
+    )
+
+    @property
+    def frontend_origin_list(self) -> list[str]:
+        return _split(self.frontend_origins)
+
     @property
     def gemini_reasoning_chain(self) -> list[str]:
         return _split(self.gemini_models_reasoning)

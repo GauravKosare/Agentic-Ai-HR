@@ -74,10 +74,14 @@ ai-recruiter-agent/
 │   ├── 05-Implementation-Plan.md
 │   ├── 06-Backend-Schema.md
 │   └── 07-Financial-Subscription-Tracking.md
-├── src/                    ← (to be added — application source code)
+├── src/
+│   ├── backend/            ← FastAPI + connectors + agents (see src/backend/README.md)
+│   └── frontend/           ← Owner Console: React + Vite + Tailwind (see src/frontend/README.md)
 ├── CHANGELOG.md
 └── .gitignore
 ```
+
+**Running locally:** start the backend (`uvicorn app.main:app --reload` from `src/backend` with its venv), then the frontend (`npm run dev` from `src/frontend`). Each directory's README has the full setup, including which API keys go where.
 
 ## Roadmap Snapshot
 

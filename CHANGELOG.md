@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] — 2026-09-10 — Owner Console (frontend)
+
+### Added
+- `src/frontend/` — React + TypeScript + Vite + Tailwind v4. The recruiter-facing web app (TRD §2, UI-UX §4).
+  - **Requirement Intake** (UI-UX §4.1): plain-language brief → editable structured summary, with the clarifying question shown alongside the draft, not blocking it.
+  - **Form Preview & Approval** (§4.2): editable requisition drives form regeneration; read-only preview of the candidate form as it will appear; "Approve" is an honest stub (distribution is Phase 2).
+  - **AI status chip** (§4.3a): polls `GET /system/ai-status`, shows the paused/active state.
+- Backend: `GET /system/ai-status` endpoint; CORS middleware with a configurable `FRONTEND_ORIGINS`.
+- Verified end-to-end in a real browser against the running backend and live Gemini: brief → parse → clarifying question → form generation (LLM-derived eligibility question from `education_requirement`) → approve.
+
+### Notes
+- No auth yet — the frontend calls the backend directly, same "flows before auth" order the backend followed. Supabase Auth is the next layer.
+
+## [0.7.0] — 2026-09-08 — Form Builder Agent + pre-Phase-1 review fixes
+
+Consolidated: Requirement Parser Agent, quota-pause guard, first FastAPI endpoints, Zoom duration guard, Form Builder Agent. See commits `7f796c5`, `76a500c`, `b213f74`.
+
 ## [0.6.1] — 2026-09-08 — Phase 0 Complete
 
 All 5 foundation connectors (Supabase, LLM Router, Speech-to-Text, Email, Zoom) confirmed healthy end-to-end against real credentials via `scripts/check_connectors.py`. Phase 0 of [05-Implementation-Plan.md](docs/05-Implementation-Plan.md) is done; next is Phase 1 (Requirement Parser Agent, Form Builder Agent).
