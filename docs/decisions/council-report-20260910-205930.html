@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Council Report — Whole-Project Review</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem 1rem 4rem;
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1c1917; background: #fafaf9;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  .sub { color: #78716c; font-size: .875rem; margin-bottom: 2rem; }
+  .q {
+    background: #fff; border: 1px solid #e7e5e4; border-radius: 12px;
+    padding: 1rem 1.25rem; margin-bottom: 2rem; font-size: .95rem;
+  }
+  .q strong { display: block; margin-bottom: .35rem; }
+  .verdict {
+    background: #fff; border: 1px solid #e7e5e4; border-left: 4px solid #059669;
+    border-radius: 12px; padding: 1.5rem 1.5rem; margin-bottom: 2rem;
+  }
+  .verdict h2 { margin: 1.4rem 0 .5rem; font-size: 1.05rem; }
+  .verdict h2:first-child { margin-top: 0; }
+  .verdict ul { margin: .4rem 0; padding-left: 1.2rem; }
+  .verdict li { margin: .3rem 0; }
+  .pill {
+    display: inline-block; background: #ecfdf5; color: #065f46;
+    border-radius: 999px; padding: .15rem .6rem; font-size: .8rem; font-weight: 600;
+  }
+  .first {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+    padding: 1rem 1.25rem; margin: 1rem 0 2rem;
+  }
+  .first strong { color: #92400e; }
+  .align {
+    background: #fff; border: 1px solid #e7e5e4; border-radius: 12px;
+    padding: 1.25rem 1.5rem; margin-bottom: 2rem;
+  }
+  .align h3 { margin: 0 0 .75rem; font-size: .95rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+  th, td { text-align: left; padding: .5rem .5rem; border-bottom: 1px solid #f0eeec; vertical-align: top; }
+  th { color: #78716c; font-weight: 600; }
+  .rec { color: #065f46; font-weight: 600; }
+  .dis { color: #b91c1c; }
+  .mid { color: #92400e; }
+  details {
+    background: #fff; border: 1px solid #e7e5e4; border-radius: 10px;
+    padding: .5rem 1rem; margin-bottom: .6rem;
+  }
+  details summary {
+    cursor: pointer; font-weight: 600; font-size: .9rem; padding: .35rem 0;
+    list-style: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before { content: "▸ "; color: #a8a29e; }
+  details[open] summary::before { content: "▾ "; }
+  details .body { font-size: .9rem; color: #292524; padding: .5rem 0 .75rem; white-space: pre-wrap; }
+  .section-label { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: #a8a29e; margin: 2.25rem 0 .75rem; }
+  footer { margin-top: 3rem; color: #a8a29e; font-size: .8rem; border-top: 1px solid #e7e5e4; padding-top: 1rem; }
+  code { background: #f5f5f4; padding: .1rem .3rem; border-radius: 4px; font-size: .85em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Council Report — Whole-Project Review</h1>
+  <div class="sub">AI Recruiter Agent · counciled 2026-09-10 · 5 advisors + 5 peer reviews + chairman</div>
+
+  <div class="q">
+    <strong>The question</strong>
+    Judge the AI Recruiter Agent as it stands today — bottlenecks, security threats, improvements,
+    unnecessary work, architecture problems — in plain language. A zero-recurring-cost web app
+    (FastAPI + React + Supabase) where a recruiter describes a hiring need and an AI runs the pipeline
+    (requirement parse → form → distribute → monitor → invite → <em>live AI voice interview</em> →
+    scorecard) up to but not including the human hire/reject decision. Candidate PII under the EU AI Act
+    (recruitment = high-risk) and India's DPDP Act. Built: LLM Router, 5 connectors, 2 agents, Owner auth
+    (Supabase Auth + mandatory MFA), 17-table schema, Owner Console, 74 tests. Not built: distribution,
+    monitoring, notifications, meeting creation, the live voice interview (largest, highest-uncertainty),
+    scoring, decision screen, persistence.
+  </div>
+
+  <div class="verdict">
+    <span class="pill">COUNCIL VERDICT</span>
+
+    <h2>Stop building forward. The riskiest part is unbuilt, unproven, and may not be feasible.</h2>
+    <p>The project has finished the safe, easy portion and left its defining feature — a custom bot that
+    joins a Zoom/Meet call and talks to candidates by voice — entirely unbuilt. Four of five advisors,
+    independently, said the planned way of building it (a Playwright browser bot wired through OS-level
+    virtual audio cables on a free cloud VM) is likely to fail. Nothing downstream can be planned until
+    that question is answered.</p>
+
+    <h2>Where the council agrees</h2>
+    <ul>
+      <li><strong>Phase 5 (the live voice interview) is the whole ballgame</strong> — and the planned
+      build path is the most fragile one available. Use your own WebRTC room (LiveKit Agents / Pipecat)
+      or Zoom's Meeting SDK, never audio-scraping a meeting.</li>
+      <li><strong>The service-role key in the backend is a live PII hole.</strong> The backend bypasses
+      row-level security and re-implements tenant isolation as "remember to filter by <code>owner_id</code>
+      in every handler." One missed filter exposes every candidate's data across every recruiter account.</li>
+      <li><strong>"Zero recurring cost" has become a liability.</strong> The quota-pause machinery, the
+      five-model chains, the keep-alive cron, and the shared key all exist to dodge a ~$20/month bill and
+      are actively forcing bad architecture.</li>
+      <li><strong>Nobody has validated the premise.</strong> No design partner, no real open role, no
+      evidence that mechanical screening (rather than sourcing or judgment) is the actual bottleneck.</li>
+      <li><strong>The "turn it into a platform" framing is premature.</strong> All five peer reviews
+      flagged it — there is no product yet to build a platform around.</li>
+    </ul>
+
+    <h2>Where the council clashes</h2>
+    <ul>
+      <li><strong>Drop the live interview vs. build it right.</strong> One advisor says replace it with
+      asynchronous recorded screening (candidate records answers, you transcribe + score) — same signal,
+      far less risk. Another says keep it but only in a controlled WebRTC room. Resolution: the two-week
+      spike decides; async is the fallback.</li>
+      <li><strong>Is the LLM Router an asset or a liability?</strong> One advisor calls it the crown jewel
+      worth extracting as its own product; another calls it a single point of daily failure with no floor.
+      Both are right — the engineering is good and reusable; depending on it as the <em>only</em> inference
+      path for a high-risk system is fragile.</li>
+      <li><strong>How much of the current build is over-engineering.</strong> Mandatory MFA, 17 tables, and
+      a three-cloud plan for zero users — premature, or cheap-to-keep and costly-to-retrofit?</li>
+    </ul>
+
+    <h2>Blind spots the peer review caught</h2>
+    <ul>
+      <li><strong>A human making the final call does <em>not</em> remove the high-risk classification.</strong>
+      AI that screens, ranks, or filters who reaches a human is itself high-risk under the EU AI Act. The
+      provider obligations — DPIA, conformity assessment, bias/accuracy testing, technical documentation,
+      logging, post-market monitoring — attach to the operator regardless of architecture. For a solo unpaid
+      builder this is likely the binding constraint on the whole project.</li>
+      <li><strong>A solo builder cannot be the "human oversight"</strong> for their own automated system in
+      any meaningful sense.</li>
+      <li><strong>Candidate-side mechanics are entirely absent:</strong> standards-compliant consent, the
+      right to an explanation, an appeal path, and the dropout cost of asking nervous candidates to talk to
+      a bot.</li>
+      <li><strong>Nobody has checked that the AI screening signal predicts job performance.</strong> If it
+      doesn't, the pipeline just delivers a worse decision faster.</li>
+    </ul>
+
+    <h2>The recommendation</h2>
+    <p>Three things, in order:</p>
+    <ul>
+      <li><strong>1. Two-week timeboxed voice spike, now, before Phases 2–4.</strong> Build it in your own
+      WebRTC room (LiveKit or Pipecat). Hard go/no-go at day 14. If no-go, switch to async recorded
+      screening — it reaches a shippable product much sooner.</li>
+      <li><strong>2. Close the PII hole regardless.</strong> Move the backend to per-request, JWT-scoped
+      Supabase connections so row-level security is the live enforcement layer, not a dormant copy of rules
+      you also hand-maintain in Python. This one can't wait.</li>
+      <li><strong>3. Get a written answer on the EU AI Act question before writing more agent code.</strong>
+      Either scope to genuine decision-support with independent human judgment at every gate (and take
+      legal advice on whether that still triggers full obligations), or exclude the EU at launch and serve
+      India only, or accept the compliance program as part of the build. And line up one real recruiter
+      with one real open role as a design partner before Phase 2.</li>
+    </ul>
+    <p>On zero-cost: keep it as a <em>default</em>, not a <em>constraint</em>. Assume a small paid tier is
+    available where free tiers force bad design, and note where you're choosing to stay free. Keep the LLM
+    Router, the schema, and the Owner auth. Don't extract the router as a product yet.</p>
+  </div>
+
+  <div class="first">
+    <strong>The one thing to do first:</strong> Run the two-week voice spike in your own WebRTC room
+    (LiveKit or Pipecat), starting now, ending in a written go/no-go. The schedule, the async fallback, the
+    compliance scope, and whether this is even the right product all depend on that answer — and you don't
+    have it yet.
+  </div>
+
+  <div class="align">
+    <h3>Advisor positions</h3>
+    <table>
+      <tr><th>Advisor</th><th>Core call</th><th>On the live interview</th></tr>
+      <tr><td>First Principles</td><td class="mid">Wrong north star</td><td>Drop it — async recorded screening gives the same signal</td></tr>
+      <tr><td>Expansionist</td><td class="dis">Scale it / productize the router</td><td>Vernacular voice is the moat — lean in</td></tr>
+      <tr><td>Executor</td><td class="rec">Feasible only in your own room</td><td>Two-week spike now; LiveKit/Pipecat/Zoom SDK</td></tr>
+      <tr><td>Contrarian</td><td class="rec">Fix the PII hole; zero-cost is the problem</td><td>Quota-pause ≠ oversight; over-built for zero users</td></tr>
+      <tr><td>Outsider</td><td class="mid">Built backwards; may not be feasible</td><td>Candidates will balk at a robot gatekeeper</td></tr>
+    </table>
+    <p style="margin:.75rem 0 0; font-size:.8rem; color:#78716c;">
+      Peer review was near-unanimous: <strong>Contrarian</strong> gave the sharpest current-state critique
+      (3 of 5 votes; Executor took the other 2 for the most constructive answer). <strong>Expansionist</strong>
+      was the biggest blind spot on all 5 reviews — a growth memo for a thing that can't safely run once.
+    </p>
+  </div>
+
+  <div class="section-label">Full advisor responses</div>
+
+  <details>
+    <summary>The First Principles Thinker</summary>
+    <div class="body">Almost none of the build touches the real job: less recruiter time spent on mechanical work. The live-voice-interview goal is a framing error. What the recruiter actually needs is a reliable signal about a candidate. A voice bot screen-scraping Google Meet through virtual audio cables is the most fragile, most regulated, most gameable way to get that signal. Asynchronous screening — the candidate records answers to set questions, you transcribe and score them — produces the same signal with a fraction of the technical and regulatory risk. "Zero cost" is the wrong north star: the quota-pause machinery, the keep-alive cron, the five-model chains are all elaborate taxes paid to dodge a ~$20/month bill. A rebuilt v1: skip the live interview entirely — form → distribute → async recorded screening → transcript + scorecard → human decides. Ship that, get one real hire through it, then decide whether a live bot is worth the trouble.</div>
+  </details>
+
+  <details>
+    <summary>The Expansionist</summary>
+    <div class="body">The LLM Router is the crown jewel and it's buried as plumbing. Extract it as a standalone open-source library plus a hosted "AI reliability router" — provider fallback, quota-aware routing, and graceful degradation are a real, unsolved pain for anyone building on free or cheap LLM tiers. Multilingual Hindi/Marathi voice interviewing is a genuine moat: English-first interview bots can't serve the 500M+ vernacular Indian workforce. The wedge is vernacular-first hiring for Bharat, with Apna / WorkIndia / Vahan as distribution channels or eventual acquirers. Compliance-by-design, done properly, is itself a sellable artifact. Position for this now: instrument every LLM call, routing decision, and scorecard into an event log; namespace the agents so they're pluggable; move the router into its own repo; and treat the transcript store as the eventual product, not a byproduct.</div>
+  </details>
+
+  <details>
+    <summary>The Executor</summary>
+    <div class="body">Rough timing for one person: Phase 2 (distribution + monitoring) — weeks. Phase 3 (notifications) — days. Phase 4 (meeting creation, Zoom only, skip Meet) — weeks. Phase 5 (live interview) — months. Phase 6 (scoring + decision screen) — weeks. The virtual-audio bot on a free Oracle VM is a rabbit hole: PulseAudio null sinks + Playwright + headless Chrome + Zoom's bot detection + WebRTC timing, all on a 1-OCPU / 1GB ARM instance. Chrome's Web Speech API is undocumented for server-side use and has no SLA. Zoom actively fights bots. Expect 6–8 weeks before you even know if it works. Don't build the media pipeline from scratch — use Zoom's Meeting SDK, or LiveKit Agents / Pipecat, and run the interview in your own WebRTC room where you control the audio. Highest-leverage move right now: a timeboxed two-week Phase 5 voice spike, before Phases 2–4, ending in a hard go/no-go.</div>
+  </details>
+
+  <details>
+    <summary>The Contrarian</summary>
+    <div class="body">The fatal flaw: the whole edifice rests on abusing free tiers to run a legally high-risk workload. The LLM Router is a single point of daily failure with no floor under it — "auto-resumes at quota reset" is not the human oversight the EU AI Act requires; it's an outage dressed up as a feature. The service-role key living in the app tier is a PII breach waiting to happen: "filter by owner_id in every endpoint" is a promise to never make a mistake across dozens of handlers, and one missing .eq("owner_id") exposes the entire candidate database across tenants. RLS was the actual defense, and it was deliberately bypassed. Use per-request, JWT-scoped database connections and keep RLS live. Meanwhile the project is over-built for its stage: mandatory MFA, 17 tables, a 5-model chain, and a three-cloud deployment for zero users and no persistence. Zero-cost is a liability that is actively forcing bad architecture — the shared key and the quota-pause both vanish the moment you accept a ~$20/month bill.</div>
+  </details>
+
+  <details>
+    <summary>The Outsider</summary>
+    <div class="body">Picture the actual moment: a nervous candidate who needs the job is talking to a robot that decides whether they advance — in Hindi or Marathi, through a browser speech engine tuned for English. The off-script answers, the accents, the bad connections, the thinking pauses — that is exactly where it breaks, and those are the moments that matter. The whole thing is backwards: the builder has finished the safe, easy 20% and left the risky core unbuilt while already committing to it in the README. The fact that the audio plumbing is described as the "hardest, least-certain" piece is a warning that the product may simply not be feasible as described. "$0/month forever" openly conflicts with the ambition. This is almost certainly a high-risk AI system that needs human-oversight documentation, bias audits, candidate notifications, and a DPIA — a serious compliance load for one person. And hand-reimplementing database protection in every single query works right up until the one time someone forgets.</div>
+  </details>
+
+  <div class="section-label">Peer review highlights</div>
+
+  <details>
+    <summary>What the five reviews converged on</summary>
+    <div class="body">Strongest response: the Contrarian (3 of 5 votes) for the sharpest current-state critique — the service-role key makes RLS decorative, and quota-pause is not human oversight. The Executor took the other 2 votes for the most constructive answer: build the interview in your own WebRTC room and dissolve the OS-audio problem entirely.
+
+Biggest blind spot: the Expansionist, on all 5 reviews — it treats a legally high-risk, zero-user, half-built project as a platform play, and "instrument everything into an event log" adds discoverable evidence to a system with no compliance process behind it.
+
+What all five advisors missed (raised only in peer review):
+• A human making the final decision does not remove the high-risk classification — AI that screens or ranks who reaches a human is itself high-risk, and the provider obligations attach regardless of architecture.
+• A solo builder cannot be the independent "human oversight" for their own automated system.
+• Candidate-side consent, right-to-explanation, appeal, and dropout economics are entirely absent.
+• Nobody has validated that mechanical screening is the recruiter's actual bottleneck, or that the AI screening signal predicts job performance.</div>
+  </details>
+
+  <footer>
+    Counciled 2026-09-10 · AI Recruiter Agent whole-project review · 5 advisors (First Principles, Expansionist,
+    Executor, Contrarian, Outsider) → 5 anonymized peer reviews → chairman synthesis.
+    Full transcript: <code>docs/decisions/council-transcript-20260910-205930.md</code>
+  </footer>
+
+</div>
+</body>
+</html>
