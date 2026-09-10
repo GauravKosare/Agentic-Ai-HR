@@ -313,12 +313,23 @@ CREATE POLICY "Owners can access their own requisitions"
 ON requisitions
 FOR ALL
 USING (
-    owner_id IN (SELECT owner_id FROM owners WHERE auth_user_id = auth.uid())
+    owner_id IN (SELECT owner_id FROM owners WHERE auth_user_id = (SELECT auth.uid()))
 );
 ```
 Tables reached only through a join (e.g., `applications`, `resumes`, `transcripts`) get an equivalent policy expressed as an `EXISTS` subquery up the chain to `owners`.
 
-The **FastAPI backend** connects using the Supabase **service-role key**, which bypasses RLS — this is intentional and necessary, since the orchestrator agent writes records (form generation, scoring, etc.) on behalf of the system rather than as a logged-in Owner. The **frontend** never holds the service-role key; it uses the **anon key** plus the Owner's session JWT, so RLS is the actual security boundary for any direct client-side reads.
+**`auth.uid()` must always be wrapped as `(SELECT auth.uid())`** — otherwise Postgres re-evaluates it once per row instead of once per query (Supabase perf-linter `auth_rls_initplan`). The initial policies were written the direct way and corrected in migration `perf_rls_initplan_and_fk_indexes` (2026-09-10); any new policy must follow the wrapped form.
+
+**Defense-in-depth, per the auth decision** ([docs/decisions/council-transcript-20260910-200541.md](./decisions/council-transcript-20260910-200541.md)): RLS is a *second* layer, not the primary one. The **FastAPI backend** connects using the Supabase **service-role key**, which bypasses RLS — necessary for system-initiated writes (form generation, scoring, quota-pause logging) that don't happen as a logged-in Owner — so the backend must *also* filter every query by `owner_id` in application code (the `get_current_owner` dependency, `app/core/auth.py`). RLS then catches anything the app code misses. The **frontend** never holds the service-role key; direct client-side Supabase reads (e.g. Realtime subscriptions) rely on RLS + the Owner's session JWT.
+
+### 5.1a Authentication (Supabase Auth)
+Owner login uses **Supabase Auth** (email/password + TOTP MFA). Decided via LLM council review — see [docs/decisions/](./decisions/). Key points:
+- **TOTP MFA is required on the Owner account.** Enforced by checking the JWT's `aal` claim is `aal2` (password + second factor) before serving any candidate PII, not just `aal1` (password only). Free on all Supabase projects.
+- **Public sign-ups are disabled.** Candidates never authenticate (tokenized links); only the recruiter logs in. Owner accounts are created manually (dashboard → Users, then insert the matching `public.owners` row).
+- The FastAPI backend verifies incoming bearer tokens against Supabase's JWKS endpoint, extracts `sub`, resolves it to `owners.owner_id`, and requires `aal2`.
+- Owner auth events (login, MFA enrollment, failed attempts) are written to `audit_log` (`actor_type = 'owner'`) for DPDP / EU AI Act accountability.
+- Supabase's custom SMTP is pointed at the existing Brevo credentials — the built-in SMTP is rate-limited and not production-grade.
+- A keep-alive ping guards against the free-tier project auto-pausing (~7 days idle), which would take Owner login down with the database.
 
 ### 5.2 Storage Buckets
 | Bucket | Contents | Access |
@@ -332,4 +343,8 @@ Both buckets are private by default (no public bucket policy). Signed URLs are s
 Realtime is enabled (via `supabase_realtime` publication) on `applications` (drives the live response-counter and pipeline-status views) and optionally `interview_sessions` (drives an in-progress/completed status indicator on the Owner Console). Every other table is read via normal request/response — Realtime is used only where the UI genuinely needs to update without user action.
 
 ### 5.4 Migrations
-Schema changes are managed as versioned SQL migrations via the Supabase CLI (`supabase migration new`, `supabase db push`), keeping the schema in this document and the actual database in sync and reviewable through normal PR review rather than applied ad hoc through the Supabase dashboard.
+Schema changes are managed as versioned SQL migrations, keeping the schema in this document and the actual database in sync. Applied so far:
+`enable_pgvector`, `create_core_schema`, `add_performance_indexes`, `enable_rls_owner_isolation`, `create_storage_buckets`, `enable_realtime_applications`, `perf_rls_initplan_and_fk_indexes`.
+
+### 5.5 Free-tier compute
+The Supabase free tier runs a small shared instance hosting Postgres + Auth (GoTrue) + PostgREST + Realtime + Storage + the pooler together. It surfaces "exhausting resources / performance affected" warnings readily — **especially right after a restore from the auto-pause** (WAL replay, autovacuum, ANALYZE catching up) and once Auth is enabled. With near-zero data this is expected instance behavior, not a query problem, and needs no action. The genuine upgrade trigger (Pro, $25/mo) is real data growth or concurrent-user load — tracked in [07-Financial-Subscription-Tracking.md](./07-Financial-Subscription-Tracking.md), not this warning.
