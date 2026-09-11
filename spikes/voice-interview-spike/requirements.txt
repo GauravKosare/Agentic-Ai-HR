@@ -11,6 +11,8 @@ python-dotenv>=1.0
 httpx>=0.27
 
 # Reuses app/connectors/speech_to_text.py and app/connectors/llm_router.py directly (see
-# agent.py) rather than duplicating the Groq/Gemini SDK calls here.
+# agent.py) rather than duplicating the Groq/Gemini SDK calls here. app.core.config (imported
+# transitively by both) needs pydantic-settings even though this spike never imports it directly.
 groq>=0.11
 google-genai>=0.3
+pydantic-settings>=2.5
