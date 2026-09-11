@@ -1,0 +1,25 @@
+# Self-hosted LiveKit server for the Phase 5 voice spike (docs/spikes/phase5-voice-spike.md).
+#
+# Dev-mode API key/secret below — fine for a local spike with test audio only.
+# Never point this dev key/secret combo at anything handling real candidate data;
+# generate real secrets (`livekit-server generate-keys`) before any non-spike use.
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: --dev --redis-host redis:6379
+    ports:
+      - "7880:7880"   # WebSocket / signaling
+      - "7881:7881"   # WebRTC TCP fallback
+      - "50000-50100:50000-50100/udp"  # WebRTC media (range trimmed for a single spike VM)
+    environment:
+      - LIVEKIT_KEYS=devkey: devsecret9999999999999999999999
+    depends_on:
+      - redis

@@ -88,6 +88,15 @@ Two hard rules run through the whole design:
 
 ## Where the project is now
 
+**In progress:** a [two-week Phase 5 voice spike](./spikes/phase5-voice-spike.md) — the
+[whole-project LLM Council](./decisions/council-report-20260910-205930.html)'s "one thing to do
+first." Runs out of implementation-plan order, before Phase 2, to prove or kill the live
+AI-interview pipeline (now targeting a self-hosted LiveKit room instead of joining Zoom/Meet
+directly) before building more of the pipeline on top of an unvalidated assumption. Scaffold
+lives in `spikes/voice-interview-spike/`; go/no-go decides whether Phase 5 proceeds as planned
+or the interview step becomes asynchronous recorded screening instead.
+
+
 **Done:**
 - All 5 foundation connectors (Supabase, LLM Router, Speech-to-Text, Email, Zoom), verified live.
 - Database schema applied (17 tables, RLS, storage buckets, Realtime).

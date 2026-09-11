@@ -8,6 +8,14 @@
 
 ## 1. Phased Roadmap
 
+> **Update (2026-09-10):** per the [whole-project LLM Council verdict](./decisions/council-report-20260910-205930.html),
+> a **two-week Phase 5 voice spike** now runs out of order, before Phase 2, to de-risk the live
+> interview pipeline before more of Phases 2–4 gets built on top of an unproven assumption. See
+> [docs/spikes/phase5-voice-spike.md](./spikes/phase5-voice-spike.md). It replaces the original
+> Playwright/Chromium-bot-joins-Zoom/Meet approach below with a self-hosted LiveKit room the
+> system controls directly — pending the spike's go/no-go, Phase 5's plan (and possibly Phase 4's
+> Zoom/Meet meeting-creation scope) will be revised to match whichever path the spike validates.
+
 ### Phase 0: Foundation & Account Setup (Weeks 1–2)
 - Provision the **Supabase** project: Postgres database (schema from [06-Backend-Schema.md](./06-Backend-Schema.md)), enable `pgvector`, configure Auth (email/password), create private Storage buckets (`resumes`, `recordings`), enable Realtime on the `applications` table, write initial RLS policies.
 - Scaffold the React web app (Owner Console shell) and connect it to Supabase Auth for login/session.

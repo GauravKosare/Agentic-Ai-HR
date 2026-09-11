@@ -1,0 +1,16 @@
+# Spike-only environment — deliberately separate from src/backend/requirements.txt so an
+# unstable/fast-moving dependency here (LiveKit Agents especially) can never affect the main
+# backend. Pin exact versions once you've confirmed what's actually installed; LiveKit's Agents
+# framework moves quickly enough that "latest" drifting mid-spike is a real risk.
+
+livekit-agents>=1.0
+livekit-plugins-silero>=1.0
+piper-tts>=1.2
+
+python-dotenv>=1.0
+httpx>=0.27
+
+# Reuses app/connectors/speech_to_text.py and app/connectors/llm_router.py directly (see
+# agent.py) rather than duplicating the Groq/Gemini SDK calls here.
+groq>=0.11
+google-genai>=0.3
