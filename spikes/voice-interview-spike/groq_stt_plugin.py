@@ -2,59 +2,63 @@
 Wraps the already-built app/connectors/speech_to_text.py (Groq Whisper chain) as a LiveKit
 Agents STT plugin, instead of duplicating Groq key handling / chain-fallback logic here.
 
-NOTE — verify against the current LiveKit Agents plugin interface before day 1: the exact
-base-class method signature (`_recognize_impl` vs. whatever the installed livekit-agents
-version calls it) moves as the framework evolves. This targets the non-streaming
-"recognize a whole utterance" shape, which matches how transcribe() already works — Groq's
-Whisper endpoint is request/response, not streaming, which is itself one of the things this
-spike is measuring (see docs/spikes/phase5-voice-spike.md, "known limitations").
+Verified against livekit-agents' actual plugin interface (checked 2026-09-11 via the
+project's public docs/source — livekit/agents on GitHub, docs.livekit.io/reference/python):
+subclasses of `stt.STT` implement `_recognize_impl(self, buffer, *, language, conn_options)
+-> SpeechEvent` (see e.g. the openai plugin's stt.py, which uses the same
+`rtc.combine_audio_frames(buffer).to_wav_bytes()` pattern used below). Re-check this against
+whatever `livekit-agents` version actually installs if `pip install` pulls something newer —
+this is a fast-moving framework.
+
+This is non-streaming by design (STTCapabilities(streaming=False)) because Groq's Whisper
+endpoint is request/response, not streaming — the spike is explicitly measuring whether that
+adds too much per-turn latency for natural conversation (see docs/spikes/phase5-voice-spike.md,
+"known limitations").
 """
 
 from __future__ import annotations
 
-import io
-import wave
+from livekit import rtc
+from livekit.agents import APIConnectOptions, stt
+from livekit.agents.types import NOT_GIVEN, NotGivenOr
 
 import _backend_path  # noqa: F401  (sets sys.path before the app.* import below)
-from livekit import rtc
-from livekit.agents import stt
-
 from app.connectors.speech_to_text import TranscriptionUnavailable, transcribe
 
 
-def _frames_to_wav_bytes(frames: list[rtc.AudioFrame]) -> bytes:
-    """Concatenate buffered AudioFrames (as VAD hands them over between speech
-    start/end) into a single mono WAV blob for transcribe()."""
-    if not frames:
-        return b""
-    sample_rate = frames[0].sample_rate
-    num_channels = frames[0].num_channels
-    buffer = io.BytesIO()
-    with wave.open(buffer, "wb") as wav_file:
-        wav_file.setnchannels(num_channels)
-        wav_file.setsampwidth(2)  # 16-bit PCM, matches LiveKit's default frame format
-        wav_file.setframerate(sample_rate)
-        for frame in frames:
-            wav_file.writeframes(bytes(frame.data))
-    return buffer.getvalue()
-
-
 class GroqWhisperSTT(stt.STT):
-    """Non-streaming STT plugin: buffers one utterance's frames, then calls the
-    existing Groq Whisper chain once per utterance."""
+    """Non-streaming STT plugin: buffers one utterance's frames (LiveKit's VAD-driven
+    endpointing hands the whole utterance to `_recognize_impl` at once), then calls the
+    existing Groq Whisper chain once per utterance.
 
-    def __init__(self) -> None:
+    `language` is the spike's configured interview language (SPIKE_LANGUAGE in agent.py) —
+    Groq Whisper auto-detects language from audio, but we still record which language this
+    utterance was *expected* to be in, since code-switching accuracy is one of the things
+    days 7-8 of the spike measure (see plan doc).
+    """
+
+    def __init__(self, language: str = "en") -> None:
         super().__init__(capabilities=stt.STTCapabilities(streaming=False, interim_results=False))
+        self._language = language
 
-    async def _recognize_impl(self, buffer: list[rtc.AudioFrame], *, language: str | None = None, **kwargs) -> stt.SpeechEvent:
-        wav_bytes = _frames_to_wav_bytes(buffer)
+    async def _recognize_impl(
+        self,
+        buffer: rtc.AudioFrame | list[rtc.AudioFrame],
+        *,
+        language: NotGivenOr[str] = NOT_GIVEN,
+        conn_options: APIConnectOptions,
+    ) -> stt.SpeechEvent:
+        wav_bytes = rtc.combine_audio_frames(buffer).to_wav_bytes()
         try:
             result = transcribe(wav_bytes, filename="utterance.wav")
         except TranscriptionUnavailable as exc:
-            # Day 9-10 adversarial testing: log this, don't crash the agent mid-interview.
+            # Day 9-10 adversarial testing: surface this as a recoverable API error rather
+            # than crashing the whole session mid-interview — matches how the rest of the
+            # project treats a Groq-chain exhaustion (app/core/quota_guard.py's pattern).
             raise stt.APIConnectionError(f"Groq STT chain exhausted: {exc}") from exc
 
+        resolved_language = language if language is not NOT_GIVEN else self._language
         return stt.SpeechEvent(
             type=stt.SpeechEventType.FINAL_TRANSCRIPT,
-            alternatives=[stt.SpeechData(text=result.text, language=language or "")],
+            alternatives=[stt.SpeechData(language=resolved_language, text=result.text)],
         )

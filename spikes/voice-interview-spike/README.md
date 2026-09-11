@@ -22,6 +22,12 @@ spikes/voice-interview-spike/
 └── agent.py               ← the LiveKit Agents worker wiring VAD → STT → LLM Router → TTS
 ```
 
+API note: `agent.py`'s LiveKit wiring (`AgentServer` + `@server.rtc_session()`,
+`stt.STT`/`tts.TTS` subclassing, `StopResponse`) was checked against livekit-agents' public
+docs/source on 2026-09-11. This is a fast-moving framework — if `pip install` pulls a version
+whose API has since shifted, fix the wiring against whatever actually installs rather than
+assuming this file is gospel.
+
 ## Setup
 
 1. **Start LiveKit locally** (or on the Oracle VM once past day 2):
@@ -41,14 +47,23 @@ spikes/voice-interview-spike/
    pip install -r requirements.txt
    ```
 
-3. **Download Piper voices** you're testing (English + Hindi at minimum; Marathi if a community
-   voice exists — this spike is partly what answers that question):
+3. **Download Piper voices** into `voices/` (English first — see "Marathi, deferred" below
+   for Hindi/Marathi sequencing):
    ```bash
-   python -m piper.download_voices en_US-lessac-medium
-   python -m piper.download_voices hi_IN-pratham-medium
+   python -m piper.download_voices en_US-lessac-medium --data-dir voices/
+   python -m piper.download_voices hi_IN-pratham-medium --data-dir voices/
    ```
-   If no usable `mr_IN` Piper voice exists, that's a real spike finding — log it in the
-   go/no-go writeup rather than skipping Marathi silently.
+   `PiperVoice.load()` takes a path to the downloaded `.onnx` file — `.env`'s
+   `PIPER_VOICE_*_PATH` vars should point at `voices/<name>.onnx`.
+
+   **Marathi, deferred by request (2026-09-11):** we're proving the LiveKit pipeline
+   mechanics first (days 1–6, English) before spending time on Marathi voice sourcing.
+   `PIPER_VOICE_MR_PATH` stays blank until then — `agent.py` fails fast with a clear message
+   if you try to run `SPIKE_LANGUAGE=mr` before it's set, rather than silently falling back
+   to another language. When you do pick it up: check Piper's voice list for an `mr_IN`
+   entry first; if none exists at usable quality, that's the real spike finding the plan doc
+   anticipates, and AI4Bharat Indic Parler-TTS/IndicF5 (already the documented fallback) is
+   the next thing to try, not a sign the plugin wiring is wrong.
 
 4. **Copy `.env.example` to `.env`** and fill in:
    - `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` — match `docker-compose.yml` for
